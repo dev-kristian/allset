@@ -14,7 +14,7 @@ export default function PublicNotFound() {
             <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
               <GalleryVerticalEnd className="size-4" />
             </div>
-            <span className="text-lg font-bold">Allset</span>
+            <span className="text-lg font-bold">HandoverPlan</span>
           </Link>
         </div>
       </header>
@@ -29,7 +29,7 @@ export default function PublicNotFound() {
           <div className="space-y-2">
             <h1 className="text-3xl font-bold">Plan Not Found</h1>
             <p className="text-muted-foreground max-w-md">
-              This handover plan doesn't exist or is no longer available. 
+              This handover plan doesn&apos;t exist or is no longer available. 
               It may have been removed or the link might be incorrect.
             </p>
           </div>
@@ -51,7 +51,7 @@ export default function PublicNotFound() {
 
           <div className="mt-8 p-4 rounded-lg bg-muted/50 max-w-md">
             <p className="text-sm text-muted-foreground">
-              <strong>Tip:</strong> If you're expecting to see a plan here, 
+              <strong>Tip:</strong> If you&apos;re expecting to see a plan here, 
               please double-check the link or contact the person who shared it with you.
             </p>
           </div>

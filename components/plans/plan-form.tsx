@@ -59,7 +59,7 @@ interface PlanFormProps {
     status: string
     items?: Array<{
       type: string
-      content: any
+      content: Task | Contact
       sort_order: number
     }>
   }
@@ -79,27 +79,29 @@ export function PlanForm({ plan }: PlanFormProps) {
   )
 
   // Initialize tasks and contacts from plan items if editing
-  const initialTasks: Task[] = plan?.items
-    ?.filter(item => item.type === 'task')
-    ?.map(item => ({
-      id: crypto.randomUUID(),
-      title: item.content.title || "",
-      status: item.content.status || "pending",
-      link: item.content.link || "",
-      priority: item.content.priority || "medium",
-      notes: item.content.notes || ""
-    })) || []
+  const initialTasks: Task[] =
+    plan?.items
+      ?.filter((item): item is { type: 'task'; content: Task, sort_order: number } => item.type === 'task')
+      .map(item => ({
+        id: crypto.randomUUID(),
+        title: item.content.title || '',
+        status: item.content.status || 'pending',
+        link: item.content.link || '',
+        priority: item.content.priority || 'medium',
+        notes: item.content.notes || '',
+      })) || []
 
-  const initialContacts: Contact[] = plan?.items
-    ?.filter(item => item.type === 'contact')
-    ?.map(item => ({
-      id: crypto.randomUUID(),
-      name: item.content.name || "",
-      role: item.content.role || "",
-      email: item.content.email || "",
-      phone: item.content.phone || "",
-      notes: item.content.notes || ""
-    })) || []
+  const initialContacts: Contact[] =
+    plan?.items
+      ?.filter((item): item is { type: 'contact'; content: Contact, sort_order: number } => item.type === 'contact')
+      .map(item => ({
+        id: crypto.randomUUID(),
+        name: item.content.name || '',
+        role: item.content.role || '',
+        email: item.content.email || '',
+        phone: item.content.phone || '',
+        notes: item.content.notes || '',
+      })) || []
 
   const [tasks, setTasks] = useState<Task[]>(
     initialTasks.length > 0 ? initialTasks : [

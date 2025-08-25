@@ -1,87 +1,43 @@
 import Link from "next/link"
-import { GalleryVerticalEnd } from "lucide-react"
+import { Logo } from "@/components/logo"
 
 const footerLinks = {
   product: [
     { name: "Features", href: "#features" },
-    { name: "Pricing", href: "#pricing" },
     { name: "FAQ", href: "#faq" },
   ],
-  company: [
-    { name: "About", href: "#about" },
-    { name: "Blog", href: "#blog" },
-    { name: "Careers", href: "#careers" },
-  ],
-  support: [
-    { name: "Contact", href: "#contact" },
-    { name: "Help Center", href: "#help" },
-    { name: "Community", href: "#community" },
-  ],
   legal: [
-    { name: "Privacy", href: "#privacy" },
-    { name: "Terms", href: "#terms" },
+    { name: "Privacy Policy", href: "/privacy" },
+    { name: "Terms of Service", href: "/terms" },
   ],
 }
 
 export function Footer() {
   return (
     <footer className="border-t border-border">
-      <div className="max-w-screen-xl mx-auto px-4 py-12 md:py-16">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
+      <div className="mx-auto max-w-screen-xl px-4 py-12 md:py-16">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           {/* Logo and description */}
-          <div className="col-span-2">
+          <div className="col-span-2 md:col-span-2">
             <Link href="/" className="flex items-center gap-2 font-semibold">
-              <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
-                <GalleryVerticalEnd className="size-4" />
-              </div>
-              <span className="text-lg font-bold">Allset</span>
+              <Logo className="size-8" />
+              <span className="text-lg font-bold">HandoverPlan</span>
             </Link>
-            <p className="mt-4 text-sm text-muted-foreground max-w-xs">
-              Streamline your workflow and boost productivity with our comprehensive platform.
+            <p className="mt-4 max-w-xs text-sm text-muted-foreground">
+              Create and share clear handover plans to ensure smooth transitions
+              while you&apos;re away.
             </p>
           </div>
 
           {/* Links */}
-          <div>
-            <h3 className="font-semibold mb-4">Product</h3>
+          <div className="md:col-start-4">
+            <h3 className="mb-4 font-semibold">Product</h3>
             <ul className="space-y-3 text-sm">
               {footerLinks.product.map((link) => (
                 <li key={link.name}>
                   <Link
                     href={link.href}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-4">Company</h3>
-            <ul className="space-y-3 text-sm">
-              {footerLinks.company.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-4">Support</h3>
-            <ul className="space-y-3 text-sm">
-              {footerLinks.support.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {link.name}
                   </Link>
@@ -93,14 +49,14 @@ export function Footer() {
 
         <div className="mt-8 flex flex-col gap-4 border-t border-border pt-8 md:flex-row md:items-center md:justify-between">
           <p className="text-sm text-muted-foreground">
-            © 2024 Allset. All rights reserved.
+            © 2024 HandoverPlan. All rights reserved.
           </p>
           <div className="flex gap-6">
             {footerLinks.legal.map((link) => (
               <Link
                 key={link.name}
                 href={link.href}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
                 {link.name}
               </Link>

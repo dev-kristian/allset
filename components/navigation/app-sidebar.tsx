@@ -3,19 +3,15 @@
 import * as React from "react"
 import Link from "next/link"
 import {
-  Home,
   FileText,
-  Plus,
-  Settings,
   HelpCircle,
-  GalleryVerticalEnd,
   LayoutDashboard,
   UserCircle,
-  Bell,
 } from "lucide-react"
 
 import { NavMain } from "@/components/navigation/nav-main"
 import { NavUser } from "@/components/navigation/nav-user"
+import { Logo } from "@/components/logo"
 import {
   Sidebar,
   SidebarContent,
@@ -27,7 +23,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-// Define the actual navigation structure for Allset
+// Define the actual navigation structure for HandoverPlan
 const navData = {
   navMain: [
     {
@@ -109,11 +105,9 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link href="/dashboard">
-                <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <GalleryVerticalEnd className="size-4" />
-                </div>
+                <Logo className="size-8" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">Allset</span>
+                  <span className="truncate font-semibold">HandoverPlan</span>
                   <span className="truncate text-xs">Handover Plans</span>
                 </div>
               </Link>

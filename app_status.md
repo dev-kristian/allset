@@ -1,4 +1,4 @@
-### Allset MVP: Technical Description & Project Plan
+### **HandoverPlan MVP: Technical Description & Project Plan**
 
 #### **Technical MVP Specification**
 
@@ -169,7 +169,7 @@ CREATE POLICY "Public can view items in published plans." ON plan_items FOR SELE
 
 ---
 
-#### **Phase 2: Authentication Flow (In Progress)**
+#### **Phase 2: Authentication Flow**
 
 *   **2.1. Implement Login Functionality**
     *   ✅ (Completed) Create the Login page UI (`/login`) with forms for email and a button for Google OAuth.
@@ -181,7 +181,7 @@ CREATE POLICY "Public can view items in published plans." ON plan_items FOR SELE
 *   **2.2. Secure Application Routes**
     *   ✅ (Completed) Create and configure `middleware.ts` to protect the `/dashboard` route group and handle redirects for authenticated/unauthenticated users.
 
-*   **2.3. Build Remaining Authentication Features (Next Steps)**
+*   **2.3. Build Remaining Authentication Features (To-Do)**
     *   **a. Email Sign-Up:**
         *   Create the Sign-Up page UI at `app/(auth)/signup/page.tsx`.
         *   The form should include inputs for "Email", "Password", and "Confirm Password".
@@ -260,12 +260,113 @@ CREATE POLICY "Public can view items in published plans." ON plan_items FOR SELE
 #### **Phase 6: Final Polish & Deployment**
 
 *   **6.1. End-to-End Testing**
-    *   Thoroughly test every user flow, especially the new ones you've just built.
-    *   Verify that all RLS policies are working as expected.
+    *   ✅ (Completed) Thoroughly test every user flow.
+    *   ✅ (Completed) Verify that all RLS policies are working as expected.
 
 *   **6.2. Styling and Responsiveness**
-    *   Review all new pages and components to ensure they are responsive on all screen sizes.
-    *   Add loading states and user feedback for form submissions.
+    *   ✅ (Completed) Review all pages and components to ensure they are responsive.
+    *   ✅ (Completed) Add loading states and user feedback for form submissions.
 
 *   **6.3. Deployment**
-    *   Deploy the latest changes to Vercel and conduct a final round of testing on the live production URL.
+    *   ✅ (Completed) Deploy to Vercel and conduct final testing on the production URL.
+
+---
+
+---
+
+#### **Phase 7: Enhance Public-Facing Landing Page**
+
+*   **7.1. Build Out Landing Page Content**
+    *   Create a "Features" section component (`components/landing/features.tsx`) that highlights key benefits (e.g., "Easy Plan Creation", "Public Sharing", "Structured Content").
+    *   Create an "FAQ" section component (`components/landing/faq.tsx`) using an `Accordion` to answer common questions.
+    *   Create a "Call to Action" (CTA) section near the footer to encourage sign-ups.
+    *   Integrate these new components into `app/page.tsx` to create a more comprehensive marketing page.
+
+*   **7.2. Refine Branding and Copy**
+    *   Update the `Hero` component with more compelling marketing copy for the heading and description.
+    *   Replace placeholder images and text throughout the landing page with final assets.
+
+---
+
+#### **Phase 8: Implement User Feedback System**
+
+*   **8.1. Create Feedback Table in Supabase**
+    *   Run the following SQL in the Supabase Editor to create a table for collecting feedback.
+
+    ```sql
+    -- Create the feedback table
+    CREATE TABLE feedback (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      type TEXT, -- e.g., 'bug', 'suggestion', 'other'
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+
+    -- Enable RLS
+    ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
+
+    -- RLS Policies for feedback
+    CREATE POLICY "Users can submit feedback." ON feedback FOR INSERT WITH CHECK (auth.uid() = user_id);
+    CREATE POLICY "Users can view their own feedback." ON feedback FOR SELECT USING (auth.uid() = user_id);
+    -- Optional: Create a policy for admins to view all feedback.
+    ```
+
+*   **8.2. Build Feedback Form Component**
+    *   Create a new component `components/feedback/feedback-dialog.tsx`.
+    *   Use a `Dialog` or `Sheet` from shadcn/ui to house a simple form with a `Textarea` for the feedback content and maybe a `Select` for the feedback type.
+    *   Add a "Feedback" or "Help" button to the `AppSidebar` or `NavUser` dropdown that triggers this dialog.
+
+*   **8.3. Create Feedback Submission Action**
+    *   Create a new file `app/(main)/feedback/actions.ts`.
+    *   Implement a `submitFeedback(formData)` Server Action that takes the form data and inserts it into the new `feedback` table.
+    *   Provide user feedback upon successful submission (e.g., a toast notification).
+
+---
+
+#### **Phase 9: Introduce App Personalization**
+
+*   **9.1. Build User Profile Management Page**
+    *   Create a new page at `app/(main)/dashboard/account/page.tsx`.
+    *   Build a form on this page that allows users to update their `full_name` from the `profiles` table.
+    *   Create an `updateProfile(formData)` Server Action to handle the update logic.
+    *   *Advanced: Add functionality for users to upload a new avatar using Supabase Storage.*
+
+*   **9.2. Implement Theme Switching (Dark/Light Mode)**
+    *   Install the `next-themes` package: `npm install next-themes`.
+    *   Create a `components/theme-provider.tsx` and wrap your root layout in it, as per the `next-themes` documentation.
+    *   Create a `components/theme-toggle.tsx` component that renders a button to switch between light, dark, and system themes.
+    *   Add the `ThemeToggle` component to the `NavUser` dropdown menu for easy access.
+
+---
+
+#### **Phase 10: SEO and Go-to-Market Polish**
+
+*   **10.1. Implement Dynamic Metadata for Public Pages**
+    *   In `app/[publicLinkId]/page.tsx`, export an async function `generateMetadata({ params })`.
+    *   Inside this function, fetch the plan corresponding to `params.publicLinkId`.
+    *   Return a `Metadata` object with a dynamic `title` (e.g., `HandoverPlan | ${plan.title}`) and `description`. This is crucial for search engine indexing and social sharing previews.
+
+*   **10.2. Optimize Core App Metadata**
+    *   Update the static metadata in `app/layout.tsx` with a final, production-ready title and description for the entire application.
+    *   Ensure the landing page (`app/page.tsx`) has compelling H1 tags and content.
+
+*   **10.3. Create `sitemap.xml` and `robots.txt`**
+    *   Create a `public/robots.txt` file to instruct search engine crawlers on which pages to index.
+    *   Create a `app/sitemap.ts` file (as a Route Handler) to dynamically generate a sitemap that includes the landing page and all *publicly published* plan URLs.
+
+---
+
+#### **Phase 11: Final Review & Re-Deployment**
+
+*   **11.1. End-to-End Testing**
+    *   Thoroughly test all new features: landing page links, feedback submission, profile updates, and theme switching.
+    *   Verify that dynamic metadata on public pages is generating correctly.
+
+*   **11.2. Final UX/UI Review**
+    *   Review all new pages and components for responsiveness and visual consistency.
+    *   Ensure loading states and user feedback (e.g., toasts) are implemented for all new server actions.
+
+*   **11.3. Re-Deploy**
+    *   Deploy the final, enhanced version of the application to Vercel.
+    *   Conduct a final round of testing on the live production URL.

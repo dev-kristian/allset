@@ -2,6 +2,9 @@ import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
+
+
+import { PlanItem } from "@/lib/types"
 import { PlanForm } from "@/components/plans/plan-form"
 import { Button } from "@/components/ui/button"
 import {
@@ -63,7 +66,7 @@ export default async function EditPlanPage({
     start_date: plan.start_date,
     end_date: plan.end_date,
     status: plan.status,
-    items: plan.plan_items?.sort((a: any, b: any) => a.sort_order - b.sort_order) || []
+    items: plan.plan_items?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
   }
 
   return (

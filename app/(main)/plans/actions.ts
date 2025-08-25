@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
+import { PlanItem } from "@/lib/types"
 import { createClient } from "@/lib/supabase/server"
 
 // Helper function to generate unique public link IDs
@@ -60,7 +61,7 @@ export async function createPlan(formData: FormData) {
 
   // Insert plan items if there are any
   if (items.length > 0) {
-    const planItems = items.map((item: any) => ({
+    const planItems = items.map((item: PlanItem) => ({
       plan_id: plan.id,
       type: item.type,
       content: item.content,
@@ -101,7 +102,14 @@ export async function updatePlan(planId: string, formData: FormData) {
   const items = JSON.parse(itemsJson)
 
   // Generate public link ID if publishing for the first time
-  let updateData: any = {
+  const updateData: {
+    title: string;
+    start_date: string;
+    end_date: string;
+    status: string;
+    updated_at: string;
+    public_link_id?: string;
+  } = {
     title,
     start_date: new Date(start_date).toISOString().split('T')[0],
     end_date: new Date(end_date).toISOString().split('T')[0],
@@ -141,7 +149,7 @@ export async function updatePlan(planId: string, formData: FormData) {
     .eq("plan_id", planId)
 
   if (items.length > 0) {
-    const planItems = items.map((item: any) => ({
+    const planItems = items.map((item: PlanItem) => ({
       plan_id: planId,
       type: item.type,
       content: item.content,

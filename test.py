@@ -36,6 +36,7 @@ DEFAULT_IGNORE_PATTERNS = [
     "*.zip", "*.tar", "*.gz", "*.rar", "*.7z",
     "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx", "*.ppt", "*.pptx",
     "*.iso", "*.img", "*.bin",
+    "*.svg"
 ]
 
 MAX_FILE_SIZE = 1 * 1024 * 1024  # 1 MB

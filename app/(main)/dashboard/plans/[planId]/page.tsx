@@ -14,6 +14,7 @@ import {
   Trash2
 } from "lucide-react"
 
+import { PlanItem, Task, Contact } from "@/lib/types"
 import { publishPlan, deletePlan } from "@/app/(main)/plans/actions"
 import { ShareSection } from "@/components/plans/share-section"
 import { Button } from "@/components/ui/button"
@@ -73,12 +74,12 @@ export default async function PlanViewPage(
 
   // Separate tasks and contacts
   const tasks = plan.plan_items
-    ?.filter((item: any) => item.type === "task")
-    ?.sort((a: any, b: any) => a.sort_order - b.sort_order) || []
+    ?.filter((item: PlanItem) => item.type === "task")
+    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
   
   const contacts = plan.plan_items
-    ?.filter((item: any) => item.type === "contact")
-    ?.sort((a: any, b: any) => a.sort_order - b.sort_order) || []
+    ?.filter((item: PlanItem) => item.type === "contact")
+    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
 
   const publicUrl = plan.public_link_id 
     ? `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/${plan.public_link_id}`
@@ -210,41 +211,44 @@ export default async function PlanViewPage(
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {tasks.map((item: any, index: number) => (
-                  <div
-                    key={item.id}
-                    className="rounded-lg border p-4 space-y-3"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <h4 className="font-medium">
-                          {index + 1}. {item.content.title}
-                        </h4>
-                        {item.content.notes && (
-                          <p className="text-sm text-muted-foreground">
-                            {item.content.notes}
-                          </p>
-                        )}
+                {tasks.map((item: PlanItem, index: number) => {
+                  const task = item.content as Task
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-lg border p-4 space-y-3"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <h4 className="font-medium">
+                            {index + 1}. {task.title}
+                          </h4>
+                          {task.notes && (
+                            <p className="text-sm text-muted-foreground">
+                              {task.notes}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <StatusBadge status={task.status} />
+                          <PriorityBadge priority={task.priority} />
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <StatusBadge status={item.content.status} />
-                        <PriorityBadge priority={item.content.priority} />
-                      </div>
+                      
+                      {task.link && (
+                        <a
+                          href={task.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View Resource
+                        </a>
+                      )}
                     </div>
-                    
-                    {item.content.link && (
-                      <a
-                        href={item.content.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        View Resource
-                      </a>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </CardContent>
             </Card>
           )}
@@ -262,45 +266,48 @@ export default async function PlanViewPage(
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {contacts.map((item: any) => (
-                  <div
-                    key={item.id}
-                    className="rounded-lg border p-4 space-y-2"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-medium">{item.content.name}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {item.content.role}
-                        </p>
+                {contacts.map((item: PlanItem) => {
+                  const contact = item.content as Contact
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-lg border p-4 space-y-2"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-medium">{contact.name}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {contact.role}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-4 text-sm">
-                      {item.content.email && (
-                        <a
-                          href={`mailto:${item.content.email}`}
-                          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-                        >
-                          <Mail className="h-3 w-3" />
-                          {item.content.email}
-                        </a>
+                      
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        {contact.email && (
+                          <a
+                            href={`mailto:${contact.email}`}
+                            className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                          >
+                            <Mail className="h-3 w-3" />
+                            {contact.email}
+                          </a>
+                        )}
+                        {contact.phone && (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground">
+                            <Phone className="h-3 w-3" />
+                            {contact.phone}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {contact.notes && (
+                        <p className="text-sm text-muted-foreground">
+                          {contact.notes}
+                        </p>
                       )}
-                      {item.content.phone && (
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                          <Phone className="h-3 w-3" />
-                          {item.content.phone}
-                        </span>
-                      )}
                     </div>
-                    
-                    {item.content.notes && (
-                      <p className="text-sm text-muted-foreground">
-                        {item.content.notes}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </CardContent>
             </Card>
           )}

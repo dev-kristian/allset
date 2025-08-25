@@ -12,7 +12,7 @@ export default function PublicPlanLoading() {
             <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
               <GalleryVerticalEnd className="size-4" />
             </div>
-            <span className="text-lg font-bold">Allset</span>
+            <span className="text-lg font-bold">HandoverPlan</span>
           </div>
         </div>
       </header>

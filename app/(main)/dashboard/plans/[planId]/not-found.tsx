@@ -10,7 +10,7 @@ export default function NotFound() {
       <div className="text-center">
         <h2 className="text-2xl font-semibold">Plan not found</h2>
         <p className="text-muted-foreground mt-2">
-          The plan you're looking for doesn't exist or you don't have access to it.
+          The plan you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
         </p>
       </div>
       <Link href="/dashboard">

@@ -3,12 +3,14 @@
 import * as React from "react"
 import Link from "next/link"
 import type { User } from "@supabase/supabase-js"
-import { GalleryVerticalEnd, Menu, X } from "lucide-react"
+import { Menu, X } from "lucide-react"
 
+import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 
 const navigation = [
-  { name: "Contact", href: "#contact" },
+  { name: "Features", href: "#features" },
+  { name: "FAQ", href: "#faq" },
 ]
 
 export function Navbar({ user }: { user: User | null }) {
@@ -18,11 +20,13 @@ export function Navbar({ user }: { user: User | null }) {
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="mx-auto flex h-16 max-w-screen-2xl items-center justify-between px-4">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 font-semibold">
-          <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
-            <GalleryVerticalEnd className="size-4" />
-          </div>
-          <span className="text-lg font-bold">Allset</span>
+        <Link
+          href="/"
+          className="flex items-center gap-2 font-semibold"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <Logo className="size-8" />
+          <span className="text-lg font-bold">HandoverPlan</span>
         </Link>
 
         {/* Desktop Navigation */}

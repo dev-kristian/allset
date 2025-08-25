@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation"
+import { Metadata } from "next"
 import { format } from "date-fns"
 import { 
   Calendar, 
@@ -23,8 +24,54 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
+import { PlanItem, Task, Contact } from "@/lib/types"
 import { createClient } from "@/lib/supabase/server"
+
+// SEO: Dynamic Metadata Generation
+export async function generateMetadata({
+  params,
+}: {
+  params: { publicLinkId: string }
+}): Promise<Metadata> {
+  const { publicLinkId } = params
+  const supabase = await createClient()
+
+  const { data: plan } = await supabase
+    .from("plans")
+    .select(`title, updated_at, profiles (full_name)`)
+    .eq("public_link_id", publicLinkId)
+    .eq("status", "published")
+    .single()
+
+  if (!plan) {
+    return {
+      title: "Plan Not Found",
+    }
+  }
+
+  // FIX: Access the first element of the profiles array
+  const authorName = (plan.profiles as any)?.[0]?.full_name || "Team Member"
+  const title = `${plan.title} | Handover Plan`
+  const description = `View the handover plan "${plan.title}" prepared by ${authorName}. Published on ${format(new Date(plan.updated_at), "MMMM d, yyyy")}.`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "article",
+      publishedTime: new Date(plan.updated_at).toISOString(),
+      authors: [authorName],
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+    },
+  }
+}
+
 
 export default async function PublicPlanPage({
   params,
@@ -59,14 +106,15 @@ export default async function PublicPlanPage({
 
   // Separate tasks and contacts
   const tasks = plan.plan_items
-    ?.filter((item: any) => item.type === "task")
-    ?.sort((a: any, b: any) => a.sort_order - b.sort_order) || []
+    ?.filter((item: PlanItem) => item.type === "task")
+    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
   
   const contacts = plan.plan_items
-    ?.filter((item: any) => item.type === "contact")
-    ?.sort((a: any, b: any) => a.sort_order - b.sort_order) || []
+    ?.filter((item: PlanItem) => item.type === "contact")
+    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
 
-  const authorName = plan.profiles?.full_name || "Team Member"
+  // FIX: Access the first element of the profiles array
+  const authorName = (plan.profiles as any)?.[0]?.full_name || "Team Member"
   const daysTotal = Math.ceil(
     (new Date(plan.end_date).getTime() - new Date(plan.start_date).getTime()) /
     (1000 * 60 * 60 * 24)
@@ -82,8 +130,37 @@ export default async function PublicPlanPage({
     ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
     : null
 
+  // SEO: Structured Data for Rich Snippets
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": plan.title,
+    "description": `A handover plan detailing tasks and contacts for the period of ${format(startDate, "MMM d, yyyy")} to ${format(endDate, "MMM d, yyyy")}.`,
+    "author": {
+      "@type": "Person",
+      "name": authorName
+    },
+    "datePublished": new Date(plan.created_at).toISOString(),
+    "dateModified": new Date(plan.updated_at).toISOString(),
+    "publisher": {
+      "@type": "Organization",
+      "name": "HandoverPlan",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://handoverplan.com/web-app-manifest-512x512.png"
+      }
+    }
+  }
+
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
+      {/* SEO: Add JSON-LD script */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      
       {/* Simple Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex h-16 items-center">
@@ -91,7 +168,7 @@ export default async function PublicPlanPage({
             <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
               <GalleryVerticalEnd className="size-4" />
             </div>
-            <span className="text-lg font-bold">Allset</span>
+            <span className="text-lg font-bold">HandoverPlan</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <Badge variant="outline" className="gap-1">
@@ -185,8 +262,8 @@ export default async function PublicPlanPage({
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {tasks.map((item: any, index: number) => (
-                  <TaskCard key={item.id} task={item.content} index={index} />
+                {tasks.map((item: PlanItem, index: number) => (
+                  <TaskCard key={item.id} task={item.content as Task} index={index} />
                 ))}
               </div>
             </CardContent>
@@ -207,8 +284,8 @@ export default async function PublicPlanPage({
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 sm:grid-cols-2">
-                {contacts.map((item: any) => (
-                  <ContactCard key={item.id} contact={item.content} />
+                {contacts.map((item: PlanItem) => (
+                  <ContactCard key={item.id} contact={item.content as Contact} />
                 ))}
               </div>
             </CardContent>
@@ -217,7 +294,7 @@ export default async function PublicPlanPage({
 
         {/* Footer */}
         <div className="mt-12 text-center text-sm text-muted-foreground">
-          <p>This handover plan was created using Allset</p>
+          <p>This handover plan was created using HandoverPlan</p>
           <p className="mt-1">
             Published on {format(new Date(plan.updated_at), "MMMM d, yyyy 'at' h:mm a")}
           </p>
@@ -228,7 +305,7 @@ export default async function PublicPlanPage({
 }
 
 // Task Card Component
-function TaskCard({ task, index }: { task: any; index: number }) {
+function TaskCard({ task, index }: { task: Task; index: number }) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -295,7 +372,7 @@ function TaskCard({ task, index }: { task: any; index: number }) {
 }
 
 // Contact Card Component
-function ContactCard({ contact }: { contact: any }) {
+function ContactCard({ contact }: { contact: Contact }) {
   return (
     <div className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
       <div className="space-y-3">

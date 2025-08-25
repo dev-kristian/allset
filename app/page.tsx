@@ -1,3 +1,6 @@
+import { Cta } from "@/components/landing/cta"
+import { Faq } from "@/components/landing/faq"
+import { Features } from "@/components/landing/features"
 import { Footer } from "@/components/landing/footer"
 import { Hero } from "@/components/landing/hero"
 import { Navbar } from "@/components/landing/navbar"
@@ -14,13 +17,27 @@ export default async function Home() {
       <Navbar user={user} />
       <main className="flex-1">
         <Hero
-          heading="Welcome to Allset"
-          description="Allset is a comprehensive platform designed to streamline your workflow and boost productivity."
+          badge="Now in Public Beta ✨"
+          heading="Ensure a Seamless Handover, Every Time."
+          description="HandoverPlan helps you create clear, comprehensive, and shareable handover plans, so you can take time off with peace of mind and your team can stay productive."
+          buttons={{
+            primary: {
+              text: "Create Your First Plan",
+              url: "/login",
+            },
+            secondary: {
+              text: "Learn More",
+              url: "#features",
+            },
+          }}
           image={{
             src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/placeholder-1.svg",
-            alt: "Allset landing page image",
+            alt: "Screenshot of the HandoverPlan application dashboard showing handover plans.",
           }}
         />
+        <Features />
+        <Faq />
+        <Cta />
       </main>
       <Footer />
     </div>

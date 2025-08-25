@@ -29,7 +29,7 @@ sequenceDiagram
     Backend->>Database: UPDATE `plans` SET status='published', public_link_id='...' WHERE id=planId
     Database-->>Backend: Confirms update
     Backend-->>Frontend: Returns success, page re-renders
-    Frontend->>User: Displays the shareable link: "allset.com/shr_a1b2c3d4"
+    Frontend->>User: Displays the shareable link: "handoverplan.com/shr_a1b2c3d4"
 
     %% --- Public View Flow ---
     actor Visitor
