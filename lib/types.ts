@@ -20,3 +20,15 @@ export interface PlanItem {
   content: Task | Contact
   sort_order: number
 }
+export interface PlanWithProfiles {
+  id: string
+  title: string
+  start_date: string
+  end_date: string
+  status: string
+  public_link_id: string
+  created_at: string
+  updated_at: string
+  plan_items?: PlanItem[]
+  profiles: { full_name: string }[] | null
+}

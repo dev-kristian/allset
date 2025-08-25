@@ -24,7 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { PlanItem, Task, Contact } from "@/lib/types"
+import { PlanItem, Task, Contact, PlanWithProfiles } from "@/lib/types"
 import { createClient } from "@/lib/supabase/server"
 
 // SEO: Dynamic Metadata Generation
@@ -41,7 +41,7 @@ export async function generateMetadata({
     .select(`title, updated_at, profiles (full_name)`)
     .eq("public_link_id", publicLinkId)
     .eq("status", "published")
-    .single()
+    .single<PlanWithProfiles>()
 
   if (!plan) {
     return {
@@ -49,8 +49,7 @@ export async function generateMetadata({
     }
   }
 
-  // FIX: Access the first element of the profiles array
-  const authorName = (plan.profiles as any)?.[0]?.full_name || "Team Member"
+  const authorName = plan.profiles?.[0]?.full_name || "Team Member"
   const title = `${plan.title} | Handover Plan`
   const description = `View the handover plan "${plan.title}" prepared by ${authorName}. Published on ${format(new Date(plan.updated_at), "MMMM d, yyyy")}.`
 
@@ -84,7 +83,8 @@ export default async function PublicPlanPage({
   // Fetch the plan using the public link ID - no auth required for published plans
   const { data: plan, error: planError } = await supabase
     .from("plans")
-    .select(`
+    .select(
+      `
       *,
       plan_items (
         id,
@@ -95,10 +95,11 @@ export default async function PublicPlanPage({
       profiles (
         full_name
       )
-    `)
+    `,
+    )
     .eq("public_link_id", publicLinkId)
     .eq("status", "published")
-    .single()
+    .single<PlanWithProfiles>()
 
   if (planError || !plan) {
     notFound()
@@ -114,10 +115,10 @@ export default async function PublicPlanPage({
     ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
 
   // FIX: Access the first element of the profiles array
-  const authorName = (plan.profiles as any)?.[0]?.full_name || "Team Member"
+  const authorName = plan.profiles?.[0]?.full_name || "Team Member"
   const daysTotal = Math.ceil(
     (new Date(plan.end_date).getTime() - new Date(plan.start_date).getTime()) /
-    (1000 * 60 * 60 * 24)
+      (1000 * 60 * 60 * 24)
   )
 
   // Calculate days remaining (if plan is active)
