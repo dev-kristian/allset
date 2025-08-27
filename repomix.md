@@ -3,7 +3,7 @@
 This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by the `repomix.py` script.
 
 - **Purpose**: To provide a comprehensive context for AI systems (like LLMs) for analysis, code review, or other automated processes.
-- **Total Files**: 36
+- **Total Files**: 39
 - **Sorting**: Files are sorted by their Git change count, with the most frequently changed (and thus likely more important) files appearing at the end.
 
 ---
@@ -28,6 +28,8 @@ app/globals.css
 app/layout.tsx
 app/manifest.json
 app/page.tsx
+app/robots.ts
+app/sitemap.ts
 components/auth/login-form.tsx
 components/icons.tsx
 components/landing/cta.tsx
@@ -36,6 +38,7 @@ components/landing/features.tsx
 components/landing/footer.tsx
 components/landing/hero.tsx
 components/landing/navbar.tsx
+components/logo.tsx
 components/navigation/app-sidebar.tsx
 components/navigation/nav-main.tsx
 components/navigation/nav-user.tsx
@@ -53,30 +56,55 @@ lib/utils.ts
 
 ## File Contents
 
-### `lib/types.ts`
+### `components/logo.tsx`
+
+```tsx
+import { cn } from "@/lib/utils"
+
+/**
+ * A reusable component for the app logo.
+ * It uses a standard <img> tag, perfect for SVGs.
+ * @param {string} className
+ */
+export function Logo({ className }: { className?: string }) {
+  return (
+    <img
+      src="/logo.svg"
+      alt="HandoverPlan Logo"
+      className={cn(className)}
+      loading="eager"
+      width="32" 
+      height="32"
+    />
+  )
+}
+```
+
+### `lib/supabase/admin.ts`
 
 ```ts
-export interface Task {
-  title: string
-  notes?: string
-  status: string
-  priority: string
-  link?: string
-}
+import { createClient } from '@supabase/supabase-js'
 
-export interface Contact {
-  name: string
-  role?: string
-  email?: string
-  phone?: string
-  notes?: string
-}
+// IMPORTANT: This client is for server-side use only and should not be exposed to the browser.
+// It uses the service role key, which has full admin privileges.
+export const createAdminClient = () => {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not defined in environment variables.')
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined in environment variables.')
+  }
 
-export interface PlanItem {
-  id: string
-  type: "task" | "contact"
-  content: Task | Contact
-  sort_order: number
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  )
 }
 ```
 
@@ -140,60 +168,104 @@ export function Features() {
 }
 ```
 
-### `app/manifest.json`
+### `app/sitemap.ts`
 
-```json
-{
-  "name": "Handover Plan",
-  "short_name": "HP",
-  "icons": [
+```ts
+import { MetadataRoute } from 'next'
+import { createClient } from '@/lib/supabase/server'
+
+const APP_URL = "https://handoverplan.com";
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const supabase = await createClient();
+
+  // Fetch all published plans to include in the sitemap
+  const { data: plans } = await supabase
+    .from('plans')
+    .select('public_link_id, updated_at')
+    .eq('status', 'published');
+
+  const planUrls = plans?.map(({ public_link_id, updated_at }) => ({
+    url: `${APP_URL}/${public_link_id}`,
+    lastModified: new Date(updated_at).toISOString(),
+    changeFrequency: 'monthly' as const,
+    priority: 0.8,
+  })) ?? [];
+
+  return [
     {
-      "src": "/web-app-manifest-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
+      url: APP_URL,
+      lastModified: new Date().toISOString(),
+      changeFrequency: 'yearly',
+      priority: 1,
     },
     {
-      "src": "/web-app-manifest-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
-  "display": "standalone"
+      url: `${APP_URL}/login`,
+      lastModified: new Date().toISOString(),
+      changeFrequency: 'yearly',
+      priority: 0.5,
+    },
+    ...planUrls,
+  ]
 }
 ```
 
-### `components/landing/cta.tsx`
+### `app/(auth)/actions.ts`
 
-```tsx
-import Link from "next/link"
+```ts
+"use server"
 
-import { Button } from "@/components/ui/button"
+import { revalidatePath } from "next/cache"
+import { headers } from "next/headers"
+import { redirect } from "next/navigation"
 
-export function Cta() {
-  return (
-    <section id="cta" className="bg-muted/50 py-24">
-      <div className="mx-auto max-w-screen-xl px-4">
-        <div className="rounded-lg border bg-background p-8 text-center md:p-12">
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Ready for a Stress-Free Handover?
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            Stop worrying about leaving work behind. Create your first handover
-            plan today and ensure your team is all set for success.
-          </p>
-          <div className="mt-8">
-            <Link href="/login">
-              <Button size="lg">Get Started for Free</Button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    </section>
-  )
+import { createClient } from "@/lib/supabase/server"
+
+export async function signInWithEmail(formData: FormData) {
+  const email = formData.get("email") as string
+  const password = formData.get("password") as string
+  const supabase = await createClient()
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  if (error) {
+    return redirect(`/login?error=${error.message}`)
+  }
+
+  revalidatePath("/", "layout")
+  return redirect("/dashboard")
+}
+
+export async function signInWithOAuth(provider: "google" | "apple") {
+  const origin = (await headers()).get("origin")
+  const supabase = await createClient()
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: `${origin}/callback`,
+    },
+  })
+
+  if (error) {
+    return redirect(`/login?error=${error.message}`)
+  }
+
+  if (data.url) {
+    return redirect(data.url)
+  }
+
+  return redirect("/login?error=Could not authenticate with provider")
+}
+
+export async function signOut() {
+  const supabase = await createClient()
+  await supabase.auth.signOut()
+  revalidatePath("/", "layout")
+  return redirect("/")
 }
 ```
 
@@ -261,41 +333,26 @@ export function Faq() {
 }
 ```
 
-### `app/(main)/dashboard/plans/[planId]/not-found.tsx`
+### `app/(main)/dashboard/page.tsx`
 
 ```tsx
+import { redirect } from "next/navigation"
 import Link from "next/link"
-import { FileX } from "lucide-react"
+import { format } from "date-fns"
+import { 
+  Plus, 
+  FileText, 
+  Globe, 
+  FileArchive,
+  Clock,
+} from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-
-export default function NotFound() {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
-      <FileX className="h-16 w-16 text-muted-foreground" />
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold">Plan not found</h2>
-        <p className="text-muted-foreground mt-2">
-          The plan you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
-        </p>
-      </div>
-      <Link href="/dashboard">
-        <Button>Back to Dashboard</Button>
-      </Link>
-    </div>
-  )
-}
-```
-
-### `components/auth/login-form.tsx`
-
-```tsx
-"use client"
-
-import { useSearchParams } from "next/navigation"
-
-import { signInWithEmail, signInWithOAuth } from "@/app/(auth)/actions"
-import { Icons } from "@/components/icons"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -304,85 +361,309 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { createClient } from "@/lib/supabase/server"
 
-export function LoginForm({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
-  const searchParams = useSearchParams()
-  const error = searchParams.get("error")
+export default async function DashboardPage() {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return redirect("/login")
+  }
+
+  const userName = user.user_metadata?.full_name ?? user.email ?? "User"
+
+  // Fetch user's plans
+  const { data: plans } = await supabase
+    .from("plans")
+    .select("*")
+    .eq("author_id", user.id)
+    .order("created_at", { ascending: false })
+
+  // Calculate statistics
+  const totalPlans = plans?.length || 0
+  const publishedPlans = plans?.filter(p => p.status === "published").length || 0
+  const draftPlans = plans?.filter(p => p.status === "draft").length || 0
+  
+  // Get active plans (where current date is between start and end date)
+  const today = new Date()
+  const activePlans = plans?.filter(p => {
+    const start = new Date(p.start_date)
+    const end = new Date(p.end_date)
+    return today >= start && today <= end && p.status === "published"
+  }).length || 0
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Welcome back</CardTitle>
-          <CardDescription>
-            Login with your Google account or email
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6">
-            <form action={() => signInWithOAuth("google")}>
-              <Button variant="outline" className="w-full">
-                <Icons.google className="mr-2 size-4" />
-                Login with Google
-              </Button>
-            </form>
-            <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
-              <span className="bg-card text-muted-foreground relative z-10 px-2">
-                Or continue with
-              </span>
-            </div>
-            {error && (
-              <div className="bg-destructive/10 text-destructive border-destructive/20 rounded-md border p-2 text-center text-sm">
-                {error}
-              </div>
-            )}
-            <form action={signInWithEmail} className="grid gap-6">
-              <div className="grid gap-3">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                />
-              </div>
-              <div className="grid gap-3">
-                <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
-                  <a
-                    href="#"
-                    className="ml-auto text-sm underline-offset-4 hover:underline"
-                  >
-                    Forgot your password?
-                  </a>
-                </div>
-                <Input id="password" name="password" type="password" required />
-              </div>
-              <Button type="submit" className="w-full">
-                Login
-              </Button>
-            </form>
-            <div className="text-center text-sm">
-              Don&apos;t have an account?{" "}
-              <a href="#" className="underline underline-offset-4">
-                Sign up
-              </a>
-            </div>
+    <>
+      <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <div className="flex items-center gap-2 px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbPage>Dashboard</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
+      </header>
+      
+      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+        {/* Welcome Section */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Welcome back, {userName.split(' ')[0]}!
+            </h1>
+            <p className="text-muted-foreground">
+              Manage and share your handover plans
+            </p>
           </div>
-        </CardContent>
-      </Card>
-      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-        By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
-        and <a href="#">Privacy Policy</a>.
+          <Link href="/dashboard/plans/new">
+            <Button size="lg">
+              <Plus className="mr-2 h-4 w-4" />
+              Create New Plan
+            </Button>
+          </Link>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Total Plans
+              </CardTitle>
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalPlans}</div>
+              <p className="text-xs text-muted-foreground">
+                All time
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Published
+              </CardTitle>
+              <Globe className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{publishedPlans}</div>
+              <p className="text-xs text-muted-foreground">
+                Publicly shared
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Drafts
+              </CardTitle>
+              <FileArchive className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{draftPlans}</div>
+              <p className="text-xs text-muted-foreground">
+                Work in progress
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Active Now
+              </CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{activePlans}</div>
+              <p className="text-xs text-muted-foreground">
+                Currently active
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Plans Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold tracking-tight">Your Plans</h2>
+            {plans && plans.length > 0 && (
+              <Badge variant="secondary">{totalPlans} total</Badge>
+            )}
+          </div>
+
+          {plans && plans.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {plans.map((plan) => {
+                const startDate = new Date(plan.start_date)
+                const endDate = new Date(plan.end_date)
+                const isActive = today >= startDate && today <= endDate && plan.status === "published"
+                const isUpcoming = today < startDate && plan.status === "published"
+                
+                return (
+                  <Link key={plan.id} href={`/dashboard/plans/${plan.id}`}>
+                    <Card className="hover:shadow-md transition-all cursor-pointer h-full relative overflow-hidden">
+                      {isActive && (
+                        <div className="absolute top-0 right-0 w-24 h-24">
+                          <div className="absolute transform rotate-45 bg-green-600 text-white text-xs text-center font-semibold py-1 right-[-35px] top-[15px] w-[120px]">
+                            Active
+                          </div>
+                        </div>
+                      )}
+                      {isUpcoming && (
+                        <div className="absolute top-0 right-0 w-24 h-24">
+                          <div className="absolute transform rotate-45 bg-blue-600 text-white text-xs text-center font-semibold py-1 right-[-35px] top-[15px] w-[120px]">
+                            Upcoming
+                          </div>
+                        </div>
+                      )}
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <CardTitle className="line-clamp-1">
+                              {plan.title}
+                            </CardTitle>
+                            <CardDescription>
+                              {format(startDate, "MMM d")} -{" "}
+                              {format(endDate, "MMM d, yyyy")}
+                            </CardDescription>
+                          </div>
+                          {plan.status === "published" ? (
+                            <Globe className="h-5 w-5 text-green-600" />
+                          ) : (
+                            <FileArchive className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center justify-between">
+                          <Badge variant={plan.status === "published" ? "default" : "secondary"}>
+                            {plan.status}
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {format(new Date(plan.created_at), "MMM d")}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                )
+              })}
+            </div>
+          ) : (
+            <Card className="flex flex-col items-center justify-center py-12">
+              <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+              <CardTitle className="mb-2">No plans yet</CardTitle>
+              <CardDescription className="mb-4 text-center max-w-sm">
+                Create your first handover plan to ensure smooth transitions during your absence
+              </CardDescription>
+              <Link href="/dashboard/plans/new">
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Your First Plan
+                </Button>
+              </Link>
+            </Card>
+          )}
+        </div>
       </div>
-    </div>
+    </>
+  )
+}
+```
+
+### `components/landing/cta.tsx`
+
+```tsx
+import Link from "next/link"
+
+import { Button } from "@/components/ui/button"
+
+export function Cta() {
+  return (
+    <section id="cta" className="bg-muted/50 py-24">
+      <div className="mx-auto max-w-screen-xl px-4">
+        <div className="rounded-lg border bg-background p-8 text-center md:p-12">
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Ready for a Stress-Free Handover?
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+            Stop worrying about leaving work behind. Create your first handover
+            plan today and ensure your team is all set for success.
+          </p>
+          <div className="mt-8">
+            <Link href="/login">
+              <Button size="lg">Get Started for Free</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+```
+
+### `lib/utils.ts`
+
+```ts
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+```
+
+### `app/(auth)/callback/route.ts`
+
+```ts
+import { NextResponse } from "next/server"
+
+import { createClient } from "@/lib/supabase/server"
+
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url)
+  const code = searchParams.get("code")
+  const next = searchParams.get("next") ?? "/dashboard"
+
+  if (code) {
+    const supabase = await createClient()
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    if (!error) {
+      return NextResponse.redirect(`${origin}${next}`)
+    }
+  }
+
+  return NextResponse.redirect(
+    `${origin}/login?error=Could not authenticate user`
+  )
+}
+```
+
+### `lib/supabase/client.ts`
+
+```ts
+"use client"
+
+import { createBrowserClient } from "@supabase/ssr"
+
+export function createClient() {
+  // Create a supabase client on the browser with project's credentials
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 }
 ```
@@ -544,18 +825,244 @@ export function ShareSection({ publicUrl }: ShareSectionProps) {
 }
 ```
 
-### `lib/supabase/client.ts`
+### `components/icons.tsx`
+
+```tsx
+import { type LucideProps } from "lucide-react"
+
+export const Icons = {
+  google: (props: LucideProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" {...props}>
+      <path
+        d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
+        fill="currentColor"
+      />
+    </svg>
+  ),
+}
+```
+
+### `app/robots.ts`
 
 ```ts
+import { MetadataRoute } from 'next'
+ 
+export default function robots(): MetadataRoute.Robots {
+  return {
+    rules: {
+      userAgent: '*',
+      allow: ['/', '/sitemap.xml'],
+      disallow: ['/dashboard/', '/login/', '/callback/'],
+    },
+    sitemap: 'https://handoverplan.com/sitemap.xml',
+  }
+}
+```
+
+### `hooks/use-mobile.ts`
+
+```ts
+import * as React from "react"
+
+const MOBILE_BREAKPOINT = 768
+
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    }
+    mql.addEventListener("change", onChange)
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    return () => mql.removeEventListener("change", onChange)
+  }, [])
+
+  return !!isMobile
+}
+
+```
+
+### `app/manifest.json`
+
+```json
+{
+  "name": "Handover Plan",
+  "short_name": "Handover",
+  "icons": [
+    {
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
+  "display": "standalone"
+}
+```
+
+### `app/(main)/layout.tsx`
+
+```tsx
+import { redirect } from "next/navigation"
+
+import { AppSidebar } from "@/components/navigation/app-sidebar"
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/ui/sidebar"
+import { createClient } from "@/lib/supabase/server"
+
+export default async function MainLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return redirect("/login")
+  }
+
+  const userData = {
+    name: user.user_metadata?.full_name ?? user.email ?? "User",
+    email: user.email!,
+    avatar: user.user_metadata?.avatar_url ?? "",
+  }
+
+  return (
+    <SidebarProvider>
+      <AppSidebar user={userData} />
+      <SidebarInset>
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
+  )
+}
+```
+
+### `components/navigation/nav-main.tsx`
+
+```tsx
 "use client"
 
-import { createBrowserClient } from "@supabase/ssr"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { ChevronRight, type LucideIcon } from "lucide-react"
 
-export function createClient() {
-  // Create a supabase client on the browser with project's credentials
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
+
+export function NavMain({
+  items,
+}: {
+  items: {
+    title: string
+    url: string
+    icon?: LucideIcon
+    isActive?: boolean
+    items?: {
+      title: string
+      url: string
+    }[]
+  }[]
+}) {
+  const pathname = usePathname()
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+      <SidebarMenu>
+        {items.map((item) => {
+          const isActive = pathname === item.url || 
+            (item.items && item.items.some(subItem => pathname === subItem.url))
+
+          if (!item.items) {
+            // Simple menu item without sub-items
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton 
+                  tooltip={item.title} 
+                  isActive={isActive}
+                  asChild
+                >
+                  <Link href={item.url}>
+                    {item.icon && <item.icon />}
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          }
+
+          // Menu item with sub-items
+          return (
+            <Collapsible
+              key={item.title}
+              asChild
+              defaultOpen={isActive}
+              className="group/collapsible"
+            >
+              <SidebarMenuItem>
+                <CollapsibleTrigger asChild>
+                  <SidebarMenuButton 
+                    tooltip={item.title}
+                    className={cn(isActive && "bg-sidebar-accent")}
+                  >
+                    {item.icon && <item.icon />}
+                    <span>{item.title}</span>
+                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                  </SidebarMenuButton>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <SidebarMenuSub>
+                    {item.items.map((subItem) => (
+                      <SidebarMenuSubItem key={subItem.title}>
+                        <SidebarMenuSubButton 
+                          asChild
+                          isActive={pathname === subItem.url}
+                        >
+                          <Link href={subItem.url}>
+                            <span>{subItem.title}</span>
+                          </Link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
+                </CollapsibleContent>
+              </SidebarMenuItem>
+            </Collapsible>
+          )
+        })}
+      </SidebarMenu>
+    </SidebarGroup>
   )
 }
 ```
@@ -693,115 +1200,59 @@ export function NavUser({
 }
 ```
 
-### `components/navigation/nav-main.tsx`
+### `app/(main)/dashboard/plans/new/page.tsx`
 
 ```tsx
-"use client"
-
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { ChevronRight, type LucideIcon } from "lucide-react"
-
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import {
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-} from "@/components/ui/sidebar"
-import { cn } from "@/lib/utils"
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+import { Separator } from "@/components/ui/separator"
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { PlanForm } from "@/components/plans/plan-form"
 
-export function NavMain({
-  items,
-}: {
-  items: {
-    title: string
-    url: string
-    icon?: LucideIcon
-    isActive?: boolean
-    items?: {
-      title: string
-      url: string
-    }[]
-  }[]
-}) {
-  const pathname = usePathname()
-
+export default async function NewPlanPage() {
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-      <SidebarMenu>
-        {items.map((item) => {
-          const isActive = pathname === item.url || 
-            (item.items && item.items.some(subItem => pathname === subItem.url))
-
-          if (!item.items) {
-            // Simple menu item without sub-items
-            return (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton 
-                  tooltip={item.title} 
-                  isActive={isActive}
-                  asChild
-                >
-                  <Link href={item.url}>
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )
-          }
-
-          // Menu item with sub-items
-          return (
-            <Collapsible
-              key={item.title}
-              asChild
-              defaultOpen={isActive}
-              className="group/collapsible"
-            >
-              <SidebarMenuItem>
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuButton 
-                    tooltip={item.title}
-                    className={cn(isActive && "bg-sidebar-accent")}
-                  >
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
-                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                  </SidebarMenuButton>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarMenuSub>
-                    {item.items.map((subItem) => (
-                      <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton 
-                          asChild
-                          isActive={pathname === subItem.url}
-                        >
-                          <Link href={subItem.url}>
-                            <span>{subItem.title}</span>
-                          </Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ))}
-                  </SidebarMenuSub>
-                </CollapsibleContent>
-              </SidebarMenuItem>
-            </Collapsible>
-          )
-        })}
-      </SidebarMenu>
-    </SidebarGroup>
+    <>
+      <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <div className="flex items-center gap-2 px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem className="hidden md:block">
+                <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator className="hidden md:block" />
+              <BreadcrumbItem className="hidden md:block">
+                <BreadcrumbLink href="/dashboard">Plans</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator className="hidden md:block" />
+              <BreadcrumbItem>
+                <BreadcrumbPage>New Plan</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
+      </header>
+      
+      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+        <div className="mx-auto w-full max-w-4xl">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold tracking-tight">Create New Plan</h1>
+            <p className="text-muted-foreground">
+              Set up a comprehensive handover plan for your absence
+            </p>
+          </div>
+          
+          <PlanForm />
+        </div>
+      </div>
+    </>
   )
 }
 ```
@@ -1048,919 +1499,6 @@ export async function deletePlan(planId: string) {
 }
 ```
 
-### `app/(auth)/actions.ts`
-
-```ts
-"use server"
-
-import { revalidatePath } from "next/cache"
-import { headers } from "next/headers"
-import { redirect } from "next/navigation"
-
-import { createClient } from "@/lib/supabase/server"
-
-export async function signInWithEmail(formData: FormData) {
-  const email = formData.get("email") as string
-  const password = formData.get("password") as string
-  const supabase = await createClient()
-
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
-
-  if (error) {
-    return redirect(`/login?error=${error.message}`)
-  }
-
-  revalidatePath("/", "layout")
-  return redirect("/dashboard")
-}
-
-export async function signInWithOAuth(provider: "google" | "apple") {
-  const origin = (await headers()).get("origin")
-  const supabase = await createClient()
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider,
-    options: {
-      redirectTo: `${origin}/callback`,
-    },
-  })
-
-  if (error) {
-    return redirect(`/login?error=${error.message}`)
-  }
-
-  if (data.url) {
-    return redirect(data.url)
-  }
-
-  return redirect("/login?error=Could not authenticate with provider")
-}
-
-export async function signOut() {
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  revalidatePath("/", "layout")
-  return redirect("/")
-}
-```
-
-### `components/landing/footer.tsx`
-
-```tsx
-import Link from "next/link"
-import { GalleryVerticalEnd } from "lucide-react"
-
-const footerLinks = {
-  product: [
-    { name: "Features", href: "#features" },
-    { name: "FAQ", href: "#faq" },
-  ],
-  legal: [
-    { name: "Privacy Policy", href: "#" },
-    { name: "Terms of Service", href: "#" },
-  ],
-}
-
-export function Footer() {
-  return (
-    <footer className="border-t border-border">
-      <div className="mx-auto max-w-screen-xl px-4 py-12 md:py-16">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-          {/* Logo and description */}
-          <div className="col-span-2 md:col-span-2">
-            <Link href="/" className="flex items-center gap-2 font-semibold">
-              <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
-                <GalleryVerticalEnd className="size-4" />
-              </div>
-              <span className="text-lg font-bold">HandoverPlan</span>
-            </Link>
-            <p className="mt-4 max-w-xs text-sm text-muted-foreground">
-              Create and share clear handover plans to ensure smooth transitions
-              while you&apos;re away.
-            </p>
-          </div>
-
-          {/* Links */}
-          <div className="md:col-start-4">
-            <h3 className="mb-4 font-semibold">Product</h3>
-            <ul className="space-y-3 text-sm">
-              {footerLinks.product.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href}
-                    className="text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        <div className="mt-8 flex flex-col gap-4 border-t border-border pt-8 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-muted-foreground">
-            © 2024 HandoverPlan. All rights reserved.
-          </p>
-          <div className="flex gap-6">
-            {footerLinks.legal.map((link) => (
-              <Link
-                key={link.name}
-                href={link.href}
-                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {link.name}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-    </footer>
-  )
-}
-```
-
-### `app/[publicLinkId]/not-found.tsx`
-
-```tsx
-import Link from "next/link"
-import { FileX, Home, ArrowLeft } from "lucide-react"
-
-import { Button } from "@/components/ui/button"
-import { GalleryVerticalEnd } from "lucide-react"
-
-export default function PublicNotFound() {
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
-      {/* Simple Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex h-16 items-center">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
-              <GalleryVerticalEnd className="size-4" />
-            </div>
-            <span className="text-lg font-bold">HandoverPlan</span>
-          </Link>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
-        <div className="flex flex-col items-center justify-center gap-6 text-center">
-          <div className="rounded-full bg-muted p-6">
-            <FileX className="h-16 w-16 text-muted-foreground" />
-          </div>
-          
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold">Plan Not Found</h1>
-            <p className="text-muted-foreground max-w-md">
-              This handover plan doesn&apos;t exist or is no longer available. 
-              It may have been removed or the link might be incorrect.
-            </p>
-          </div>
-          
-          <div className="flex gap-3">
-            <Link href="/">
-              <Button variant="outline">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Go to Homepage
-              </Button>
-            </Link>
-            <Link href="/login">
-              <Button>
-                <Home className="mr-2 h-4 w-4" />
-                Sign In
-              </Button>
-            </Link>
-          </div>
-
-          <div className="mt-8 p-4 rounded-lg bg-muted/50 max-w-md">
-            <p className="text-sm text-muted-foreground">
-              <strong>Tip:</strong> If you&apos;re expecting to see a plan here, 
-              please double-check the link or contact the person who shared it with you.
-            </p>
-          </div>
-        </div>
-      </main>
-    </div>
-  )
-}
-```
-
-### `components/landing/hero.tsx`
-
-```tsx
-import Image from "next/image"
-import { ArrowRight, ArrowUpRight } from "lucide-react"
-
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-
-interface ButtonConfig {
-  text: string
-  url: string
-  icon?: React.ReactNode
-}
-
-interface HeroProps {
-  badge?: string
-  heading: string
-  description: string
-  buttons?: {
-    primary?: ButtonConfig
-    secondary?: ButtonConfig
-  }
-  image: {
-    src: string
-    alt: string
-  }
-}
-
-const Hero = ({
-  badge = "Now in Public Beta ✨",
-  heading = "Ensure a Seamless Handover, Every Time.",
-  description = "HandoverPlan helps you create clear, comprehensive, and shareable handover plans, so you can take time off with peace of mind and your team can stay productive.",
-  buttons = {
-    primary: {
-      text: "Create Your First Plan",
-      url: "/login",
-    },
-    secondary: {
-      text: "Learn More",
-      url: "#features",
-      icon: <ArrowRight className="ml-2 size-4" />,
-    },
-  },
-  image = {
-    src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/placeholder-1.svg",
-    alt: "Screenshot of the HandoverPlan application dashboard.",
-  },
-}: HeroProps) => {
-  return (
-    <section className="py-32">
-      <div className="mx-auto max-w-screen-xl px-4">
-        <div className="grid items-center gap-8 lg:grid-cols-2">
-          <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
-            {badge && (
-              <a href="#features" className="group">
-                <Badge variant="outline">
-                  {badge}
-                  <ArrowUpRight className="ml-2 size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                </Badge>
-              </a>
-            )}
-            <h1 className="my-6 text-pretty text-4xl font-bold lg:text-6xl">
-              {heading}
-            </h1>
-            <p className="text-muted-foreground mb-8 max-w-xl lg:text-xl">
-              {description}
-            </p>
-            <div className="flex w-full flex-col justify-center gap-2 sm:flex-row lg:justify-start">
-              {buttons.primary && (
-                <Button asChild className="w-full sm:w-auto">
-                  <a href={buttons.primary.url} className="inline-flex items-center">
-                    {buttons.primary.text}
-                    {buttons.primary.icon}
-                  </a>
-                </Button>
-              )}
-              {buttons.secondary && (
-                <Button asChild variant="outline" className="w-full sm:w-auto">
-                  <a href={buttons.secondary.url} className="inline-flex items-center">
-                    {buttons.secondary.text}
-                    {buttons.secondary.icon}
-                  </a>
-                </Button>
-              )}
-            </div>
-          </div>
-          <Image
-            src={image.src}
-            alt={image.alt}
-            width={1024}
-            height={576}
-            className="max-h-96 w-full rounded-md object-cover"
-          />
-        </div>
-      </div>
-    </section>
-  )
-}
-
-export { Hero }
-```
-
-### `components/navigation/app-sidebar.tsx`
-
-```tsx
-"use client"
-
-import * as React from "react"
-import Link from "next/link"
-import {
-  FileText,
-  HelpCircle,
-  GalleryVerticalEnd,
-  LayoutDashboard,
-  UserCircle,
-} from "lucide-react"
-
-import { NavMain } from "@/components/navigation/nav-main"
-import { NavUser } from "@/components/navigation/nav-user"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarRail,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar"
-
-// Define the actual navigation structure for HandoverPlan
-const navData = {
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: LayoutDashboard,
-      isActive: true,
-    },
-    {
-      title: "Plans",
-      url: "/dashboard",
-      icon: FileText,
-      items: [
-        {
-          title: "All Plans",
-          url: "/dashboard",
-        },
-        {
-          title: "Create New Plan",
-          url: "/dashboard/plans/new",
-        },
-      ],
-    },
-    {
-      title: "Account",
-      url: "#",
-      icon: UserCircle,
-      items: [
-        {
-          title: "Profile",
-          url: "#",
-        },
-        {
-          title: "Notifications",
-          url: "#",
-        },
-        {
-          title: "Settings",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Help & Support",
-      url: "#",
-      icon: HelpCircle,
-      items: [
-        {
-          title: "Documentation",
-          url: "#",
-        },
-        {
-          title: "Contact Support",
-          url: "#",
-        },
-        {
-          title: "FAQs",
-          url: "#",
-        },
-      ],
-    },
-  ],
-}
-
-// Define user prop type
-interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  user: {
-    name: string
-    email: string
-    avatar: string
-  }
-}
-
-export function AppSidebar({ user, ...props }: AppSidebarProps) {
-  return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href="/dashboard">
-                <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <GalleryVerticalEnd className="size-4" />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">HandoverPlan</span>
-                  <span className="truncate text-xs">Handover Plans</span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={navData.navMain} />
-      </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={user} />
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
-  )
-}
-```
-
-### `app/(main)/layout.tsx`
-
-```tsx
-import { redirect } from "next/navigation"
-
-import { AppSidebar } from "@/components/navigation/app-sidebar"
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@/components/ui/sidebar"
-import { createClient } from "@/lib/supabase/server"
-
-export default async function MainLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return redirect("/login")
-  }
-
-  const userData = {
-    name: user.user_metadata?.full_name ?? user.email ?? "User",
-    email: user.email!,
-    avatar: user.user_metadata?.avatar_url ?? "",
-  }
-
-  return (
-    <SidebarProvider>
-      <AppSidebar user={userData} />
-      <SidebarInset>
-        {children}
-      </SidebarInset>
-    </SidebarProvider>
-  )
-}
-```
-
-### `app/[publicLinkId]/page.tsx`
-
-```tsx
-import { notFound } from "next/navigation"
-import { format } from "date-fns"
-import { 
-  Calendar, 
-  FileText,
-  Mail,
-  Phone,
-  User,
-  ExternalLink,
-  Globe,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  GalleryVerticalEnd
-} from "lucide-react"
-
-import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { PlanItem, Task, Contact } from "@/lib/types"
-import { createClient } from "@/lib/supabase/server"
-
-export default async function PublicPlanPage({
-  params,
-}: {
-  params: { publicLinkId: string }
-}) {
-  const { publicLinkId } = await params
-  const supabase = await createClient()
-
-  // Fetch the plan using the public link ID - no auth required for published plans
-  const { data: plan, error: planError } = await supabase
-    .from("plans")
-    .select(`
-      *,
-      plan_items (
-        id,
-        type,
-        content,
-        sort_order
-      ),
-      profiles (
-        full_name
-      )
-    `)
-    .eq("public_link_id", publicLinkId)
-    .eq("status", "published")
-    .single()
-
-  if (planError || !plan) {
-    notFound()
-  }
-
-  // Separate tasks and contacts
-  const tasks = plan.plan_items
-    ?.filter((item: PlanItem) => item.type === "task")
-    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
-  
-  const contacts = plan.plan_items
-    ?.filter((item: PlanItem) => item.type === "contact")
-    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
-
-  const authorName = plan.profiles?.full_name || "Team Member"
-  const daysTotal = Math.ceil(
-    (new Date(plan.end_date).getTime() - new Date(plan.start_date).getTime()) /
-    (1000 * 60 * 60 * 24)
-  )
-
-  // Calculate days remaining (if plan is active)
-  const today = new Date()
-  const startDate = new Date(plan.start_date)
-  const endDate = new Date(plan.end_date)
-  const isActive = today >= startDate && today <= endDate
-  const isUpcoming = today < startDate
-  const daysRemaining = isActive 
-    ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-    : null
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
-      {/* Simple Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex h-16 items-center">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
-              <GalleryVerticalEnd className="size-4" />
-            </div>
-            <span className="text-lg font-bold">HandoverPlan</span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Badge variant="outline" className="gap-1">
-              <Globe className="h-3 w-3" />
-              Public View
-            </Badge>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
-        {/* Hero Section */}
-        <div className="mb-8 text-center space-y-4">
-          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-2">
-            <span>Handover Plan by {authorName}</span>
-          </div>
-          <h1 className="text-4xl font-bold tracking-tight">{plan.title}</h1>
-          
-          {/* Status Indicator */}
-          <div className="flex justify-center">
-            {isActive && (
-              <Badge className="gap-1" variant="default">
-                <CheckCircle2 className="h-3 w-3" />
-                Active - {daysRemaining} days remaining
-              </Badge>
-            )}
-            {isUpcoming && (
-              <Badge className="gap-1" variant="secondary">
-                <Clock className="h-3 w-3" />
-                Upcoming
-              </Badge>
-            )}
-            {!isActive && !isUpcoming && (
-              <Badge className="gap-1" variant="outline">
-                <XCircle className="h-3 w-3" />
-                Completed
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Coverage Period Card */}
-        <Card className="mb-8 border-2">
-          <CardHeader className="bg-muted/50">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-primary" />
-              Coverage Period
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid sm:grid-cols-3 gap-6">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-1">Start Date</p>
-                <p className="font-semibold">
-                  {format(startDate, "MMM d, yyyy")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {format(startDate, "EEEE")}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-1">End Date</p>
-                <p className="font-semibold">
-                  {format(endDate, "MMM d, yyyy")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {format(endDate, "EEEE")}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-1">Duration</p>
-                <p className="font-semibold">{daysTotal} days</p>
-                <p className="text-xs text-muted-foreground">Total</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Tasks Section */}
-        {tasks.length > 0 && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                Active Tasks & Projects
-              </CardTitle>
-              <CardDescription>
-                {tasks.length} {tasks.length === 1 ? 'item' : 'items'} requiring attention during this period
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {tasks.map((item: PlanItem, index: number) => (
-                  <TaskCard key={item.id} task={item.content as Task} index={index} />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Contacts Section */}
-        {contacts.length > 0 && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5 text-primary" />
-                Important Contacts
-              </CardTitle>
-              <CardDescription>
-                Key people to reach out to for specific issues
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {contacts.map((item: PlanItem) => (
-                  <ContactCard key={item.id} contact={item.content as Contact} />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Footer */}
-        <div className="mt-12 text-center text-sm text-muted-foreground">
-          <p>This handover plan was created using HandoverPlan</p>
-          <p className="mt-1">
-            Published on {format(new Date(plan.updated_at), "MMMM d, yyyy 'at' h:mm a")}
-          </p>
-        </div>
-      </main>
-    </div>
-  )
-}
-
-// Task Card Component
-function TaskCard({ task, index }: { task: Task; index: number }) {
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-green-600" />
-      case 'in-progress':
-        return <AlertCircle className="h-4 w-4 text-blue-600" />
-      case 'review':
-        return <Clock className="h-4 w-4 text-yellow-600" />
-      default:
-        return <AlertCircle className="h-4 w-4 text-gray-400" />
-    }
-  }
-
-  const priorityColors: Record<string, string> = {
-    low: "bg-slate-100 text-slate-700 border-slate-300",
-    medium: "bg-blue-100 text-blue-700 border-blue-300",
-    high: "bg-orange-100 text-orange-700 border-orange-300",
-    critical: "bg-red-100 text-red-700 border-red-300",
-  }
-
-  return (
-    <div className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-start gap-3">
-          <span className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-sm font-medium">
-            {index + 1}
-          </span>
-          <div className="space-y-1 flex-1">
-            <h4 className="font-medium text-base">{task.title}</h4>
-            {task.notes && (
-              <p className="text-sm text-muted-foreground">{task.notes}</p>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 items-end">
-          <div className="flex items-center gap-1">
-            {getStatusIcon(task.status)}
-            <span className="text-xs capitalize">{task.status.replace('-', ' ')}</span>
-          </div>
-          <Badge 
-            variant="outline" 
-            className={`text-xs ${priorityColors[task.priority] || priorityColors.medium}`}
-          >
-            {task.priority} priority
-          </Badge>
-        </div>
-      </div>
-      
-      {task.link && (
-        <div className="mt-3 pt-3 border-t">
-          <a
-            href={task.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-          >
-            <ExternalLink className="h-3 w-3" />
-            View Related Resource
-          </a>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Contact Card Component
-function ContactCard({ contact }: { contact: Contact }) {
-  return (
-    <div className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
-      <div className="space-y-3">
-        <div>
-          <h4 className="font-medium text-base">{contact.name}</h4>
-          <p className="text-sm text-muted-foreground">{contact.role}</p>
-        </div>
-        
-        <div className="space-y-2">
-          {contact.email && (
-            <a
-              href={`mailto:${contact.email}`}
-              className="inline-flex items-center gap-2 text-sm hover:text-primary transition-colors"
-            >
-              <Mail className="h-4 w-4 text-muted-foreground" />
-              {contact.email}
-            </a>
-          )}
-          {contact.phone && (
-            <div className="flex items-center gap-2 text-sm">
-              <Phone className="h-4 w-4 text-muted-foreground" />
-              {contact.phone}
-            </div>
-          )}
-        </div>
-        
-        {contact.notes && (
-          <div className="pt-2 border-t">
-            <p className="text-xs text-muted-foreground">{contact.notes}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-```
-
-### `lib/supabase/admin.ts`
-
-```ts
-import { createClient } from '@supabase/supabase-js'
-
-// IMPORTANT: This client is for server-side use only and should not be exposed to the browser.
-// It uses the service role key, which has full admin privileges.
-export const createAdminClient = () => {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not defined in environment variables.')
-  }
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined in environment variables.')
-  }
-
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  )
-}
-```
-
-### `lib/supabase/server.ts`
-
-```ts
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
-
-export async function createClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        // The new `getAll` method reads all cookies
-        getAll() {
-          return cookieStore.getAll()
-        },
-        // The new `setAll` method writes multiple cookies
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
-    }
-  )
-}
-```
-
-### `app/(auth)/login/page.tsx`
-
-```tsx
-import { Suspense } from "react"
-import { GalleryVerticalEnd } from "lucide-react"
-
-import { LoginForm } from "@/components/auth/login-form"
-
-export default function LoginPage() {
-  return (
-    <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
-      <div className="flex w-full max-w-sm flex-col gap-6">
-        <a href="#" className="flex items-center gap-2 self-center font-medium">
-          <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
-            <GalleryVerticalEnd className="size-4" />
-          </div>
-          Acme Inc.
-        </a>
-        <Suspense>
-          <LoginForm />
-        </Suspense>
-      </div>
-    </div>
-  )
-}
-
-```
-
 ### `app/(main)/dashboard/plans/[planId]/edit/page.tsx`
 
 ```tsx
@@ -2089,61 +1627,350 @@ export default async function EditPlanPage({
 }
 ```
 
-### `app/(main)/dashboard/plans/new/page.tsx`
+### `components/landing/hero.tsx`
 
 ```tsx
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Separator } from "@/components/ui/separator"
-import { SidebarTrigger } from "@/components/ui/sidebar"
-import { PlanForm } from "@/components/plans/plan-form"
+import Image from "next/image"
+import { ArrowRight, ArrowUpRight } from "lucide-react"
 
-export default async function NewPlanPage() {
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+
+interface ButtonConfig {
+  text: string
+  url: string
+  icon?: React.ReactNode
+}
+
+interface HeroProps {
+  badge?: string
+  heading: string
+  description: string
+  buttons?: {
+    primary?: ButtonConfig
+    secondary?: ButtonConfig
+  }
+  image: {
+    src: string
+    alt: string
+  }
+}
+
+const Hero = ({
+  badge = "Now in Public Beta ✨",
+  heading = "Ensure a Seamless Handover, Every Time.",
+  description = "HandoverPlan helps you create clear, comprehensive, and shareable handover plans, so you can take time off with peace of mind and your team can stay productive.",
+  buttons = {
+    primary: {
+      text: "Create Your First Plan",
+      url: "/login",
+    },
+    secondary: {
+      text: "Learn More",
+      url: "#features",
+      icon: <ArrowRight className="ml-2 size-4" />,
+    },
+  },
+  image = {
+    src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/placeholder-1.svg",
+    alt: "Screenshot of the HandoverPlan application dashboard.",
+  },
+}: HeroProps) => {
   return (
-    <>
-      <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-        <div className="flex items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="/dashboard">Plans</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem>
-                <BreadcrumbPage>New Plan</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-      </header>
-      
-      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        <div className="mx-auto w-full max-w-4xl">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold tracking-tight">Create New Plan</h1>
-            <p className="text-muted-foreground">
-              Set up a comprehensive handover plan for your absence
+    <section className="py-32">
+      <div className="mx-auto max-w-screen-xl px-4">
+        <div className="grid items-center gap-8 lg:grid-cols-2">
+          <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
+            {badge && (
+              <a href="#features" className="group">
+                <Badge variant="outline">
+                  {badge}
+                  <ArrowUpRight className="ml-2 size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </Badge>
+              </a>
+            )}
+            <h1 className="my-6 text-pretty text-4xl font-bold lg:text-6xl">
+              {heading}
+            </h1>
+            <p className="text-muted-foreground mb-8 max-w-xl lg:text-xl">
+              {description}
             </p>
+            <div className="flex w-full flex-col justify-center gap-2 sm:flex-row lg:justify-start">
+              {buttons.primary && (
+                <Button asChild className="w-full sm:w-auto">
+                  <a href={buttons.primary.url} className="inline-flex items-center">
+                    {buttons.primary.text}
+                    {buttons.primary.icon}
+                  </a>
+                </Button>
+              )}
+              {buttons.secondary && (
+                <Button asChild variant="outline" className="w-full sm:w-auto">
+                  <a href={buttons.secondary.url} className="inline-flex items-center">
+                    {buttons.secondary.text}
+                    {buttons.secondary.icon}
+                  </a>
+                </Button>
+              )}
+            </div>
           </div>
-          
-          <PlanForm />
+          <Image
+            src={image.src}
+            alt={image.alt}
+            width={1024}
+            height={576}
+            className="max-h-96 w-full rounded-md object-cover"
+          />
         </div>
       </div>
-    </>
+    </section>
   )
 }
+
+export { Hero }
+```
+
+### `lib/types.ts`
+
+```ts
+export interface Task {
+  title: string
+  notes?: string
+  status: string
+  priority: string
+  link?: string
+}
+
+export interface Contact {
+  name: string
+  role?: string
+  email?: string
+  phone?: string
+  notes?: string
+}
+
+export interface PlanItem {
+  id: string
+  type: "task" | "contact"
+  content: Task | Contact
+  sort_order: number
+}
+export interface PlanWithProfiles {
+  id: string
+  title: string
+  start_date: string
+  end_date: string
+  status: string
+  public_link_id: string
+  created_at: string
+  updated_at: string
+  plan_items?: PlanItem[]
+  profiles: { full_name: string }[] | null
+}
+```
+
+### `components/landing/footer.tsx`
+
+```tsx
+import Link from "next/link"
+import { Logo } from "@/components/logo"
+
+const footerLinks = {
+  product: [
+    { name: "Features", href: "#features" },
+    { name: "FAQ", href: "#faq" },
+  ],
+  legal: [
+    { name: "Privacy Policy", href: "/privacy" },
+    { name: "Terms of Service", href: "/terms" },
+  ],
+}
+
+export function Footer() {
+  return (
+    <footer className="border-t border-border">
+      <div className="mx-auto max-w-screen-xl px-4 py-12 md:py-16">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+          {/* Logo and description */}
+          <div className="col-span-2 md:col-span-2">
+            <Link href="/" className="flex items-center gap-2 font-semibold">
+              <Logo className="size-8" />
+              <span className="text-lg font-bold">HandoverPlan</span>
+            </Link>
+            <p className="mt-4 max-w-xs text-sm text-muted-foreground">
+              Create and share clear handover plans to ensure smooth transitions
+              while you&apos;re away.
+            </p>
+          </div>
+
+          {/* Links */}
+          <div className="md:col-start-4">
+            <h3 className="mb-4 font-semibold">Product</h3>
+            <ul className="space-y-3 text-sm">
+              {footerLinks.product.map((link) => (
+                <li key={link.name}>
+                  <Link
+                    href={link.href}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {link.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col gap-4 border-t border-border pt-8 md:flex-row md:items-center md:justify-between">
+          <p className="text-sm text-muted-foreground">
+            © 2024 HandoverPlan. All rights reserved.
+          </p>
+          <div className="flex gap-6">
+            {footerLinks.legal.map((link) => (
+              <Link
+                key={link.name}
+                href={link.href}
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {link.name}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </footer>
+  )
+}
+```
+
+### `app/globals.css`
+
+```css
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.65rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.623 0.214 259.815);
+  --primary-foreground: oklch(0.97 0.014 254.604);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.623 0.214 259.815);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.141 0.005 285.823);
+  --sidebar-primary: oklch(0.623 0.214 259.815);
+  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
+  --sidebar-accent: oklch(0.967 0.001 286.375);
+  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-border: oklch(0.92 0.004 286.32);
+  --sidebar-ring: oklch(0.623 0.214 259.815);
+}
+
+.dark {
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.546 0.245 262.881);
+  --primary-foreground: oklch(0.379 0.146 265.522);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.488 0.243 264.376);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.21 0.006 285.885);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.546 0.245 262.881);
+  --sidebar-primary-foreground: oklch(0.379 0.146 265.522);
+  --sidebar-accent: oklch(0.274 0.006 286.033);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.488 0.243 264.376);
+}
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+
 ```
 
 ### `app/(main)/dashboard/plans/[planId]/page.tsx`
@@ -2500,32 +2327,6 @@ function PriorityBadge({ priority }: { priority: string }) {
 }
 ```
 
-### `app/(auth)/callback/route.ts`
-
-```ts
-import { NextResponse } from "next/server"
-
-import { createClient } from "@/lib/supabase/server"
-
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
-  const code = searchParams.get("code")
-  const next = searchParams.get("next") ?? "/dashboard"
-
-  if (code) {
-    const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`)
-    }
-  }
-
-  return NextResponse.redirect(
-    `${origin}/login?error=Could not authenticate user`
-  )
-}
-```
-
 ### `app/[publicLinkId]/loading.tsx`
 
 ```tsx
@@ -2598,282 +2399,399 @@ export default function PublicPlanLoading() {
 }
 ```
 
-### `app/(main)/dashboard/page.tsx`
+### `lib/supabase/server.ts`
 
-```tsx
-import { redirect } from "next/navigation"
-import Link from "next/link"
-import { format } from "date-fns"
-import { 
-  Plus, 
-  FileText, 
-  Globe, 
-  FileArchive,
-  Clock,
-} from "lucide-react"
+```ts
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { SidebarTrigger } from "@/components/ui/sidebar"
-import { createClient } from "@/lib/supabase/server"
+export async function createClient() {
+  const cookieStore = await cookies()
 
-export default async function DashboardPage() {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return redirect("/login")
-  }
-
-  const userName = user.user_metadata?.full_name ?? user.email ?? "User"
-
-  // Fetch user's plans
-  const { data: plans } = await supabase
-    .from("plans")
-    .select("*")
-    .eq("author_id", user.id)
-    .order("created_at", { ascending: false })
-
-  // Calculate statistics
-  const totalPlans = plans?.length || 0
-  const publishedPlans = plans?.filter(p => p.status === "published").length || 0
-  const draftPlans = plans?.filter(p => p.status === "draft").length || 0
-  
-  // Get active plans (where current date is between start and end date)
-  const today = new Date()
-  const activePlans = plans?.filter(p => {
-    const start = new Date(p.start_date)
-    const end = new Date(p.end_date)
-    return today >= start && today <= end && p.status === "published"
-  }).length || 0
-
-  return (
-    <>
-      <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-        <div className="flex items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage>Dashboard</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-      </header>
-      
-      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        {/* Welcome Section */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              Welcome back, {userName.split(' ')[0]}!
-            </h1>
-            <p className="text-muted-foreground">
-              Manage and share your handover plans
-            </p>
-          </div>
-          <Link href="/dashboard/plans/new">
-            <Button size="lg">
-              <Plus className="mr-2 h-4 w-4" />
-              Create New Plan
-            </Button>
-          </Link>
-        </div>
-
-        {/* Statistics Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Total Plans
-              </CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalPlans}</div>
-              <p className="text-xs text-muted-foreground">
-                All time
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Published
-              </CardTitle>
-              <Globe className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{publishedPlans}</div>
-              <p className="text-xs text-muted-foreground">
-                Publicly shared
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Drafts
-              </CardTitle>
-              <FileArchive className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{draftPlans}</div>
-              <p className="text-xs text-muted-foreground">
-                Work in progress
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Active Now
-              </CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{activePlans}</div>
-              <p className="text-xs text-muted-foreground">
-                Currently active
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Plans Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold tracking-tight">Your Plans</h2>
-            {plans && plans.length > 0 && (
-              <Badge variant="secondary">{totalPlans} total</Badge>
-            )}
-          </div>
-
-          {plans && plans.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {plans.map((plan) => {
-                const startDate = new Date(plan.start_date)
-                const endDate = new Date(plan.end_date)
-                const isActive = today >= startDate && today <= endDate && plan.status === "published"
-                const isUpcoming = today < startDate && plan.status === "published"
-                
-                return (
-                  <Link key={plan.id} href={`/dashboard/plans/${plan.id}`}>
-                    <Card className="hover:shadow-md transition-all cursor-pointer h-full relative overflow-hidden">
-                      {isActive && (
-                        <div className="absolute top-0 right-0 w-24 h-24">
-                          <div className="absolute transform rotate-45 bg-green-600 text-white text-xs text-center font-semibold py-1 right-[-35px] top-[15px] w-[120px]">
-                            Active
-                          </div>
-                        </div>
-                      )}
-                      {isUpcoming && (
-                        <div className="absolute top-0 right-0 w-24 h-24">
-                          <div className="absolute transform rotate-45 bg-blue-600 text-white text-xs text-center font-semibold py-1 right-[-35px] top-[15px] w-[120px]">
-                            Upcoming
-                          </div>
-                        </div>
-                      )}
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-1">
-                            <CardTitle className="line-clamp-1">
-                              {plan.title}
-                            </CardTitle>
-                            <CardDescription>
-                              {format(startDate, "MMM d")} -{" "}
-                              {format(endDate, "MMM d, yyyy")}
-                            </CardDescription>
-                          </div>
-                          {plan.status === "published" ? (
-                            <Globe className="h-5 w-5 text-green-600" />
-                          ) : (
-                            <FileArchive className="h-5 w-5 text-muted-foreground" />
-                          )}
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center justify-between">
-                          <Badge variant={plan.status === "published" ? "default" : "secondary"}>
-                            {plan.status}
-                          </Badge>
-                          <span className="text-sm text-muted-foreground">
-                            {format(new Date(plan.created_at), "MMM d")}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                )
-              })}
-            </div>
-          ) : (
-            <Card className="flex flex-col items-center justify-center py-12">
-              <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-              <CardTitle className="mb-2">No plans yet</CardTitle>
-              <CardDescription className="mb-4 text-center max-w-sm">
-                Create your first handover plan to ensure smooth transitions during your absence
-              </CardDescription>
-              <Link href="/dashboard/plans/new">
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Your First Plan
-                </Button>
-              </Link>
-            </Card>
-          )}
-        </div>
-      </div>
-    </>
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        // The new `getAll` method reads all cookies
+        getAll() {
+          return cookieStore.getAll()
+        },
+        // The new `setAll` method writes multiple cookies
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // The `set` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
+          }
+        },
+      },
+    }
   )
 }
 ```
 
-### `lib/utils.ts`
-
-```ts
-import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-```
-
-### `components/icons.tsx`
+### `app/(main)/dashboard/plans/[planId]/not-found.tsx`
 
 ```tsx
-import { type LucideProps } from "lucide-react"
+import Link from "next/link"
+import { FileX } from "lucide-react"
 
-export const Icons = {
-  google: (props: LucideProps) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" {...props}>
-      <path
-        d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-        fill="currentColor"
-      />
-    </svg>
-  ),
+import { Button } from "@/components/ui/button"
+
+export default function NotFound() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
+      <FileX className="h-16 w-16 text-muted-foreground" />
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold">Plan not found</h2>
+        <p className="text-muted-foreground mt-2">
+          The plan you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
+        </p>
+      </div>
+      <Link href="/dashboard">
+        <Button>Back to Dashboard</Button>
+      </Link>
+    </div>
+  )
+}
+```
+
+### `components/navigation/app-sidebar.tsx`
+
+```tsx
+"use client"
+
+import * as React from "react"
+import Link from "next/link"
+import {
+  FileText,
+  HelpCircle,
+  LayoutDashboard,
+  UserCircle,
+} from "lucide-react"
+
+import { NavMain } from "@/components/navigation/nav-main"
+import { NavUser } from "@/components/navigation/nav-user"
+import { Logo } from "@/components/logo"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarRail,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar"
+
+// Define the actual navigation structure for HandoverPlan
+const navData = {
+  navMain: [
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: LayoutDashboard,
+      isActive: true,
+    },
+    {
+      title: "Plans",
+      url: "/dashboard",
+      icon: FileText,
+      items: [
+        {
+          title: "All Plans",
+          url: "/dashboard",
+        },
+        {
+          title: "Create New Plan",
+          url: "/dashboard/plans/new",
+        },
+      ],
+    },
+    {
+      title: "Account",
+      url: "#",
+      icon: UserCircle,
+      items: [
+        {
+          title: "Profile",
+          url: "#",
+        },
+        {
+          title: "Notifications",
+          url: "#",
+        },
+        {
+          title: "Settings",
+          url: "#",
+        },
+      ],
+    },
+    {
+      title: "Help & Support",
+      url: "#",
+      icon: HelpCircle,
+      items: [
+        {
+          title: "Documentation",
+          url: "#",
+        },
+        {
+          title: "Contact Support",
+          url: "#",
+        },
+        {
+          title: "FAQs",
+          url: "#",
+        },
+      ],
+    },
+  ],
+}
+
+// Define user prop type
+interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  user: {
+    name: string
+    email: string
+    avatar: string
+  }
+}
+
+export function AppSidebar({ user, ...props }: AppSidebarProps) {
+  return (
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild>
+              <Link href="/dashboard">
+                <Logo className="size-8" />
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">HandoverPlan</span>
+                  <span className="truncate text-xs">Handover Plans</span>
+                </div>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <NavMain items={navData.navMain} />
+      </SidebarContent>
+      <SidebarFooter>
+        <NavUser user={user} />
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  )
+}
+```
+
+### `components/landing/navbar.tsx`
+
+```tsx
+"use client"
+
+import * as React from "react"
+import Link from "next/link"
+import type { User } from "@supabase/supabase-js"
+import { Menu, X } from "lucide-react"
+
+import { Logo } from "@/components/logo"
+import { Button } from "@/components/ui/button"
+
+const navigation = [
+  { name: "Features", href: "#features" },
+  { name: "FAQ", href: "#faq" },
+]
+
+export function Navbar({ user }: { user: User | null }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
+
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <nav className="mx-auto flex h-16 max-w-screen-2xl items-center justify-between px-4">
+        {/* Logo */}
+        <Link
+          href="/"
+          className="flex items-center gap-2 font-semibold"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <Logo className="size-8" />
+          <span className="text-lg font-bold">HandoverPlan</span>
+        </Link>
+
+        {/* Desktop Navigation */}
+        <div className="hidden md:flex md:items-center md:gap-6">
+          <nav className="flex items-center gap-6">
+            {navigation.map((item) => (
+              <Link
+                key={item.name}
+                href={item.href}
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {item.name}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-3">
+            {user ? (
+              <Link href="/dashboard">
+                <Button size="sm">Dashboard</Button>
+              </Link>
+            ) : (
+              <>
+                <Link href="/login">
+                  <Button variant="ghost" size="sm">
+                    Log in
+                  </Button>
+                </Link>
+                <Link href="/login">
+                  <Button size="sm">Get started</Button>
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile menu button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="md:hidden"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        >
+          {mobileMenuOpen ? (
+            <X className="size-4" />
+          ) : (
+            <Menu className="size-4" />
+          )}
+          <span className="sr-only">Toggle menu</span>
+        </Button>
+      </nav>
+
+      {/* Mobile Navigation */}
+      {mobileMenuOpen && (
+        <div className="md:hidden">
+          <div className="space-y-1 border-t border-border px-4 pb-6 pt-6">
+            {navigation.map((item) => (
+              <Link
+                key={item.name}
+                href={item.href}
+                className="block py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {item.name}
+              </Link>
+            ))}
+            <div className="flex flex-col gap-3 pt-4">
+              {user ? (
+                <Link
+                  href="/dashboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Button size="sm" className="w-full">
+                    Dashboard
+                  </Button>
+                </Link>
+              ) : (
+                <>
+                  <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start"
+                    >
+                      Log in
+                    </Button>
+                  </Link>
+                  <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                    <Button size="sm" className="w-full">
+                      Get started
+                    </Button>
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </header>
+  )
+}
+```
+
+### `app/[publicLinkId]/not-found.tsx`
+
+```tsx
+import Link from "next/link"
+import { FileX, Home, ArrowLeft } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import { GalleryVerticalEnd } from "lucide-react"
+
+export default function PublicNotFound() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
+      {/* Simple Header */}
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex h-16 items-center">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
+              <GalleryVerticalEnd className="size-4" />
+            </div>
+            <span className="text-lg font-bold">HandoverPlan</span>
+          </Link>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
+        <div className="flex flex-col items-center justify-center gap-6 text-center">
+          <div className="rounded-full bg-muted p-6">
+            <FileX className="h-16 w-16 text-muted-foreground" />
+          </div>
+          
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold">Plan Not Found</h1>
+            <p className="text-muted-foreground max-w-md">
+              This handover plan doesn&apos;t exist or is no longer available. 
+              It may have been removed or the link might be incorrect.
+            </p>
+          </div>
+          
+          <div className="flex gap-3">
+            <Link href="/">
+              <Button variant="outline">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Go to Homepage
+              </Button>
+            </Link>
+            <Link href="/login">
+              <Button>
+                <Home className="mr-2 h-4 w-4" />
+                Sign In
+              </Button>
+            </Link>
+          </div>
+
+          <div className="mt-8 p-4 rounded-lg bg-muted/50 max-w-md">
+            <p className="text-sm text-muted-foreground">
+              <strong>Tip:</strong> If you&apos;re expecting to see a plan here, 
+              please double-check the link or contact the person who shared it with you.
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
 }
 ```
 
@@ -3390,336 +3308,551 @@ export function PlanForm({ plan }: PlanFormProps) {
 }
 ```
 
-### `hooks/use-mobile.ts`
-
-```ts
-import * as React from "react"
-
-const MOBILE_BREAKPOINT = 768
-
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return !!isMobile
-}
-
-```
-
-### `components/landing/navbar.tsx`
+### `app/(auth)/login/page.tsx`
 
 ```tsx
-"use client"
-
-import * as React from "react"
+import { Suspense } from "react"
 import Link from "next/link"
-import type { User } from "@supabase/supabase-js"
-import { GalleryVerticalEnd, Menu, X } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/logo"
+import { LoginForm } from "@/components/auth/login-form"
 
-const navigation = [
-  { name: "Features", href: "#features" },
-  { name: "FAQ", href: "#faq" },
-]
-
-export function Navbar({ user }: { user: User | null }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
-
+export default function LoginPage() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <nav className="mx-auto flex h-16 max-w-screen-2xl items-center justify-between px-4">
-        {/* Logo */}
+    <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
+      <div className="flex w-full max-w-sm flex-col gap-6">
         <Link
           href="/"
-          className="flex items-center gap-2 font-semibold"
-          onClick={() => setMobileMenuOpen(false)}
+          className="flex items-center gap-2 self-center font-medium"
         >
-          <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
-            <GalleryVerticalEnd className="size-4" />
-          </div>
-          <span className="text-lg font-bold">HandoverPlan</span>
+          <Logo className="size-6" />
+          HandoverPlan
         </Link>
-
-        {/* Desktop Navigation */}
-        <div className="hidden md:flex md:items-center md:gap-6">
-          <nav className="flex items-center gap-6">
-            {navigation.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {item.name}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-3">
-            {user ? (
-              <Link href="/dashboard">
-                <Button size="sm">Dashboard</Button>
-              </Link>
-            ) : (
-              <>
-                <Link href="/login">
-                  <Button variant="ghost" size="sm">
-                    Log in
-                  </Button>
-                </Link>
-                <Link href="/login">
-                  <Button size="sm">Get started</Button>
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Mobile menu button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="md:hidden"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        >
-          {mobileMenuOpen ? (
-            <X className="size-4" />
-          ) : (
-            <Menu className="size-4" />
-          )}
-          <span className="sr-only">Toggle menu</span>
-        </Button>
-      </nav>
-
-      {/* Mobile Navigation */}
-      {mobileMenuOpen && (
-        <div className="md:hidden">
-          <div className="space-y-1 border-t border-border px-4 pb-6 pt-6">
-            {navigation.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                className="block py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {item.name}
-              </Link>
-            ))}
-            <div className="flex flex-col gap-3 pt-4">
-              {user ? (
-                <Link
-                  href="/dashboard"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <Button size="sm" className="w-full">
-                    Dashboard
-                  </Button>
-                </Link>
-              ) : (
-                <>
-                  <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full justify-start"
-                    >
-                      Log in
-                    </Button>
-                  </Link>
-                  <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-                    <Button size="sm" className="w-full">
-                      Get started
-                    </Button>
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </header>
+        <Suspense>
+          <LoginForm />
+        </Suspense>
+      </div>
+    </div>
   )
 }
 ```
 
-### `app/globals.css`
-
-```css
-@import "tailwindcss";
-@import "tw-animate-css";
-
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-}
-
-:root {
-  --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.623 0.214 259.815);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.623 0.214 259.815);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.623 0.214 259.815);
-}
-
-.dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.546 0.245 262.881);
-  --primary-foreground: oklch(0.379 0.146 265.522);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.488 0.243 264.376);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.379 0.146 265.522);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
-}
-
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
-
-
-```
-
-### `app/layout.tsx`
+### `components/auth/login-form.tsx`
 
 ```tsx
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+"use client"
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { signInWithEmail, signInWithOAuth } from "@/app/(auth)/actions"
+import { Icons } from "@/components/icons"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
 
-export const metadata: Metadata = {
-  title: "Create Next App",
-  description: "Generated by create next app",
-};
+export function LoginForm({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  const searchParams = useSearchParams()
+  const error = searchParams.get("error")
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
   return (
-    <html lang="en" className="w-full">
-      <head><meta name="apple-mobile-web-app-title" content="Handover" /></head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased w-full`}
-      >
-        {children}
-      </body>
-    </html>
-  );
+    <div className={cn("flex flex-col gap-6", className)} {...props}>
+      <Card>
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">Welcome back</CardTitle>
+          <CardDescription>
+            Login with your Google account or email
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6">
+            <form action={() => signInWithOAuth("google")}>
+              <Button variant="outline" className="w-full">
+                <Icons.google className="mr-2 size-4" />
+                Login with Google
+              </Button>
+            </form>
+            <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
+              <span className="bg-card text-muted-foreground relative z-10 px-2">
+                Or continue with
+              </span>
+            </div>
+            {error && (
+              <div className="bg-destructive/10 text-destructive border-destructive/20 rounded-md border p-2 text-center text-sm">
+                {error}
+              </div>
+            )}
+            <form action={signInWithEmail} className="grid gap-6">
+              <div className="grid gap-3">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="m@example.com"
+                  required
+                />
+              </div>
+              <div className="grid gap-3">
+                <div className="flex items-center">
+                  <Label htmlFor="password">Password</Label>
+                  <Link
+                    href="/forgot-password"
+                    className="ml-auto text-sm underline-offset-4 hover:underline"
+                  >
+                    Forgot your password?
+                  </Link>
+                </div>
+                <Input id="password" name="password" type="password" required />
+              </div>
+              <Button type="submit" className="w-full">
+                Login
+              </Button>
+            </form>
+            <div className="text-center text-sm">
+              Don&apos;t have an account?{" "}
+              <Link href="/signup" className="underline underline-offset-4">
+                Sign up
+              </Link>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
+        By clicking continue, you agree to our{" "}
+        <Link href="/terms">Terms of Service</Link> and{" "}
+        <Link href="/privacy">Privacy Policy</Link>.
+      </div>
+    </div>
+  )
+}
+```
+
+### `app/[publicLinkId]/page.tsx`
+
+```tsx
+import { notFound } from "next/navigation"
+import { Metadata } from "next"
+import { format } from "date-fns"
+import { 
+  Calendar, 
+  FileText,
+  Mail,
+  Phone,
+  User,
+  ExternalLink,
+  Globe,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  XCircle,
+  GalleryVerticalEnd
+} from "lucide-react"
+
+import { Badge } from "@/components/ui/badge"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { PlanItem, Task, Contact, PlanWithProfiles } from "@/lib/types"
+import { createClient } from "@/lib/supabase/server"
+
+// SEO: Dynamic Metadata Generation
+export async function generateMetadata({
+  params,
+}: {
+  params: { publicLinkId: string }
+}): Promise<Metadata> {
+  const { publicLinkId } = params
+  const supabase = await createClient()
+
+  const { data: plan } = await supabase
+    .from("plans")
+    .select(`title, updated_at, profiles (full_name)`)
+    .eq("public_link_id", publicLinkId)
+    .eq("status", "published")
+    .single<PlanWithProfiles>()
+
+  if (!plan) {
+    return {
+      title: "Plan Not Found",
+    }
+  }
+
+  const authorName = plan.profiles?.[0]?.full_name || "Team Member"
+  const title = `${plan.title} | Handover Plan`
+  const description = `View the handover plan "${plan.title}" prepared by ${authorName}. Published on ${format(new Date(plan.updated_at), "MMMM d, yyyy")}.`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "article",
+      publishedTime: new Date(plan.updated_at).toISOString(),
+      authors: [authorName],
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+    },
+  }
 }
 
+
+export default async function PublicPlanPage({
+  params,
+}: {
+  params: { publicLinkId: string }
+}) {
+  const { publicLinkId } = await params
+  const supabase = await createClient()
+
+  // Fetch the plan using the public link ID - no auth required for published plans
+  const { data: plan, error: planError } = await supabase
+    .from("plans")
+    .select(
+      `
+      *,
+      plan_items (
+        id,
+        type,
+        content,
+        sort_order
+      ),
+      profiles (
+        full_name
+      )
+    `,
+    )
+    .eq("public_link_id", publicLinkId)
+    .eq("status", "published")
+    .single<PlanWithProfiles>()
+
+  if (planError || !plan) {
+    notFound()
+  }
+
+  // Separate tasks and contacts
+  const tasks = plan.plan_items
+    ?.filter((item: PlanItem) => item.type === "task")
+    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+  
+  const contacts = plan.plan_items
+    ?.filter((item: PlanItem) => item.type === "contact")
+    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+
+  // FIX: Access the first element of the profiles array
+  const authorName = plan.profiles?.[0]?.full_name || "Team Member"
+  const daysTotal = Math.ceil(
+    (new Date(plan.end_date).getTime() - new Date(plan.start_date).getTime()) /
+      (1000 * 60 * 60 * 24)
+  )
+
+  // Calculate days remaining (if plan is active)
+  const today = new Date()
+  const startDate = new Date(plan.start_date)
+  const endDate = new Date(plan.end_date)
+  const isActive = today >= startDate && today <= endDate
+  const isUpcoming = today < startDate
+  const daysRemaining = isActive 
+    ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    : null
+
+  // SEO: Structured Data for Rich Snippets
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": plan.title,
+    "description": `A handover plan detailing tasks and contacts for the period of ${format(startDate, "MMM d, yyyy")} to ${format(endDate, "MMM d, yyyy")}.`,
+    "author": {
+      "@type": "Person",
+      "name": authorName
+    },
+    "datePublished": new Date(plan.created_at).toISOString(),
+    "dateModified": new Date(plan.updated_at).toISOString(),
+    "publisher": {
+      "@type": "Organization",
+      "name": "HandoverPlan",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://handoverplan.com/web-app-manifest-512x512.png"
+      }
+    }
+  }
+
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
+      {/* SEO: Add JSON-LD script */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      
+      {/* Simple Header */}
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex h-16 items-center">
+          <div className="flex items-center gap-2">
+            <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
+              <GalleryVerticalEnd className="size-4" />
+            </div>
+            <span className="text-lg font-bold">HandoverPlan</span>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Badge variant="outline" className="gap-1">
+              <Globe className="h-3 w-3" />
+              Public View
+            </Badge>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
+        {/* Hero Section */}
+        <div className="mb-8 text-center space-y-4">
+          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-2">
+            <span>Handover Plan by {authorName}</span>
+          </div>
+          <h1 className="text-4xl font-bold tracking-tight">{plan.title}</h1>
+          
+          {/* Status Indicator */}
+          <div className="flex justify-center">
+            {isActive && (
+              <Badge className="gap-1" variant="default">
+                <CheckCircle2 className="h-3 w-3" />
+                Active - {daysRemaining} days remaining
+              </Badge>
+            )}
+            {isUpcoming && (
+              <Badge className="gap-1" variant="secondary">
+                <Clock className="h-3 w-3" />
+                Upcoming
+              </Badge>
+            )}
+            {!isActive && !isUpcoming && (
+              <Badge className="gap-1" variant="outline">
+                <XCircle className="h-3 w-3" />
+                Completed
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Coverage Period Card */}
+        <Card className="mb-8 border-2">
+          <CardHeader className="bg-muted/50">
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-primary" />
+              Coverage Period
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="grid sm:grid-cols-3 gap-6">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-1">Start Date</p>
+                <p className="font-semibold">
+                  {format(startDate, "MMM d, yyyy")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {format(startDate, "EEEE")}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-1">End Date</p>
+                <p className="font-semibold">
+                  {format(endDate, "MMM d, yyyy")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {format(endDate, "EEEE")}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-1">Duration</p>
+                <p className="font-semibold">{daysTotal} days</p>
+                <p className="text-xs text-muted-foreground">Total</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tasks Section */}
+        {tasks.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                Active Tasks & Projects
+              </CardTitle>
+              <CardDescription>
+                {tasks.length} {tasks.length === 1 ? 'item' : 'items'} requiring attention during this period
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {tasks.map((item: PlanItem, index: number) => (
+                  <TaskCard key={item.id} task={item.content as Task} index={index} />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Contacts Section */}
+        {contacts.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5 text-primary" />
+                Important Contacts
+              </CardTitle>
+              <CardDescription>
+                Key people to reach out to for specific issues
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {contacts.map((item: PlanItem) => (
+                  <ContactCard key={item.id} contact={item.content as Contact} />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Footer */}
+        <div className="mt-12 text-center text-sm text-muted-foreground">
+          <p>This handover plan was created using HandoverPlan</p>
+          <p className="mt-1">
+            Published on {format(new Date(plan.updated_at), "MMMM d, yyyy 'at' h:mm a")}
+          </p>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+// Task Card Component
+function TaskCard({ task, index }: { task: Task; index: number }) {
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle2 className="h-4 w-4 text-green-600" />
+      case 'in-progress':
+        return <AlertCircle className="h-4 w-4 text-blue-600" />
+      case 'review':
+        return <Clock className="h-4 w-4 text-yellow-600" />
+      default:
+        return <AlertCircle className="h-4 w-4 text-gray-400" />
+    }
+  }
+
+  const priorityColors: Record<string, string> = {
+    low: "bg-slate-100 text-slate-700 border-slate-300",
+    medium: "bg-blue-100 text-blue-700 border-blue-300",
+    high: "bg-orange-100 text-orange-700 border-orange-300",
+    critical: "bg-red-100 text-red-700 border-red-300",
+  }
+
+  return (
+    <div className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start gap-3">
+          <span className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-sm font-medium">
+            {index + 1}
+          </span>
+          <div className="space-y-1 flex-1">
+            <h4 className="font-medium text-base">{task.title}</h4>
+            {task.notes && (
+              <p className="text-sm text-muted-foreground">{task.notes}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 items-end">
+          <div className="flex items-center gap-1">
+            {getStatusIcon(task.status)}
+            <span className="text-xs capitalize">{task.status.replace('-', ' ')}</span>
+          </div>
+          <Badge 
+            variant="outline" 
+            className={`text-xs ${priorityColors[task.priority] || priorityColors.medium}`}
+          >
+            {task.priority} priority
+          </Badge>
+        </div>
+      </div>
+      
+      {task.link && (
+        <div className="mt-3 pt-3 border-t">
+          <a
+            href={task.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" />
+            View Related Resource
+          </a>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Contact Card Component
+function ContactCard({ contact }: { contact: Contact }) {
+  return (
+    <div className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
+      <div className="space-y-3">
+        <div>
+          <h4 className="font-medium text-base">{contact.name}</h4>
+          <p className="text-sm text-muted-foreground">{contact.role}</p>
+        </div>
+        
+        <div className="space-y-2">
+          {contact.email && (
+            <a
+              href={`mailto:${contact.email}`}
+              className="inline-flex items-center gap-2 text-sm hover:text-primary transition-colors"
+            >
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              {contact.email}
+            </a>
+          )}
+          {contact.phone && (
+            <div className="flex items-center gap-2 text-sm">
+              <Phone className="h-4 w-4 text-muted-foreground" />
+              {contact.phone}
+            </div>
+          )}
+        </div>
+        
+        {contact.notes && (
+          <div className="pt-2 border-t">
+            <p className="text-xs text-muted-foreground">{contact.notes}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 ```
 
 ### `app/page.tsx`
@@ -3769,6 +3902,94 @@ export default async function Home() {
       <Footer />
     </div>
   )
+}
+```
+
+### `app/layout.tsx`
+
+```tsx
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const APP_NAME = "Handover Plan";
+const APP_DESCRIPTION =
+  "Create, manage, and share clear handover plans to ensure smooth transitions while you're away. Take time off with peace of mind.";
+const APP_URL = "https://handoverplan.com";
+
+export const metadata: Metadata = {
+  metadataBase: new URL(APP_URL),
+  title: {
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
+  },
+  description: APP_DESCRIPTION,
+  applicationName: APP_NAME,
+  appleWebApp: {
+    capable: true,
+    title: APP_NAME,
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  manifest: "/manifest.json",
+  // The 'icons' object is removed. Next.js will automatically use:
+  // - app/favicon.ico
+  // - app/apple-icon.png
+  // - app/icon.svg (or .png, .jpg)
+  openGraph: {
+    type: "website",
+    url: APP_URL,
+    title: APP_NAME,
+    description: APP_DESCRIPTION,
+    siteName: APP_NAME,
+    images: [
+      {
+        url: "/web-app-manifest-512x512.png",
+        width: 512,
+        height: 512,
+        alt: "Handover Plan Logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: APP_NAME,
+    description: APP_DESCRIPTION,
+    images: ["/web-app-manifest-512x512.png"],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" className="w-full">
+      <head />
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased w-full`}
+      >
+        {children}
+      </body>
+    </html>
+  );
 }
 ```
 

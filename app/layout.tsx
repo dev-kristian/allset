@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -34,10 +35,6 @@ export const metadata: Metadata = {
     telephone: false,
   },
   manifest: "/manifest.json",
-  // The 'icons' object is removed. Next.js will automatically use:
-  // - app/favicon.ico
-  // - app/apple-icon.png
-  // - app/icon.svg (or .png, .jpg)
   openGraph: {
     type: "website",
     url: APP_URL,
@@ -77,6 +74,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased w-full`}
       >
         {children}
+        <Toaster richColors />
       </body>
     </html>
   );

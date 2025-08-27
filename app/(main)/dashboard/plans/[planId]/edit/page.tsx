@@ -2,8 +2,6 @@ import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
-
-
 import { PlanItem } from "@/lib/types"
 import { PlanForm } from "@/components/plans/plan-form"
 import { Button } from "@/components/ui/button"
@@ -37,7 +35,8 @@ export default async function EditPlanPage({
   // Fetch the plan with its items
   const { data: plan, error: planError } = await supabase
     .from("plans")
-    .select(`
+    .select(
+      `
       *,
       plan_items (
         id,
@@ -45,18 +44,14 @@ export default async function EditPlanPage({
         content,
         sort_order
       )
-    `)
+    `
+    )
     .eq("id", params.planId)
     .eq("author_id", user.id)
     .single()
 
   if (planError || !plan) {
     notFound()
-  }
-
-  // Don't allow editing published plans
-  if (plan.status === "published") {
-    redirect(`/dashboard/plans/${params.planId}`)
   }
 
   // Transform the data to match the PlanForm component's expected format
@@ -66,7 +61,10 @@ export default async function EditPlanPage({
     start_date: plan.start_date,
     end_date: plan.end_date,
     status: plan.status,
-    items: plan.plan_items?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+    items:
+      plan.plan_items?.sort(
+        (a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order
+      ) || [],
   }
 
   return (
@@ -94,7 +92,7 @@ export default async function EditPlanPage({
           </Breadcrumb>
         </div>
       </header>
-      
+
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
         <div className="mx-auto w-full max-w-4xl">
           <div className="mb-6 space-y-4">
@@ -106,7 +104,7 @@ export default async function EditPlanPage({
                 </Button>
               </Link>
             </div>
-            
+
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Edit Plan</h1>
               <p className="text-muted-foreground">
@@ -114,7 +112,7 @@ export default async function EditPlanPage({
               </p>
             </div>
           </div>
-          
+
           <PlanForm plan={planData} />
         </div>
       </div>

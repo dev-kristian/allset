@@ -1,17 +1,17 @@
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { format } from "date-fns"
-import { 
-  Calendar, 
-  Edit, 
-  Globe, 
-  ArrowLeft, 
+import {
+  Calendar,
+  Edit,
+  Globe,
+  ArrowLeft,
   ExternalLink,
   Mail,
   Phone,
   User,
   FileText,
-  Trash2
+  Trash2,
 } from "lucide-react"
 
 import { PlanItem, Task, Contact } from "@/lib/types"
@@ -38,9 +38,11 @@ import {
 import { createClient } from "@/lib/supabase/server"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
-export default async function PlanViewPage(
-  { params }: { params: { planId: string } }
-) {
+export default async function PlanViewPage({
+  params,
+}: {
+  params: { planId: string }
+}) {
   const { planId } = await params
   const supabase = await createClient()
 
@@ -55,7 +57,8 @@ export default async function PlanViewPage(
   // Fetch the plan with its items
   const { data: plan, error: planError } = await supabase
     .from("plans")
-    .select(`
+    .select(
+      `
       *,
       plan_items (
         id,
@@ -63,7 +66,8 @@ export default async function PlanViewPage(
         content,
         sort_order
       )
-    `)
+    `
+    )
     .eq("id", planId)
     .eq("author_id", user.id)
     .single()
@@ -73,16 +77,20 @@ export default async function PlanViewPage(
   }
 
   // Separate tasks and contacts
-  const tasks = plan.plan_items
-    ?.filter((item: PlanItem) => item.type === "task")
-    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
-  
-  const contacts = plan.plan_items
-    ?.filter((item: PlanItem) => item.type === "contact")
-    ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+  const tasks =
+    plan.plan_items
+      ?.filter((item: PlanItem) => item.type === "task")
+      ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
 
-  const publicUrl = plan.public_link_id 
-    ? `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/${plan.public_link_id}`
+  const contacts =
+    plan.plan_items
+      ?.filter((item: PlanItem) => item.type === "contact")
+      ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+
+  const publicUrl = plan.public_link_id
+    ? `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/${
+        plan.public_link_id
+      }`
     : null
 
   return (
@@ -120,9 +128,15 @@ export default async function PlanViewPage(
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight">{plan.title}</h1>
+                <h1 className="text-3xl font-bold tracking-tight">
+                  {plan.title}
+                </h1>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge variant={plan.status === "published" ? "default" : "secondary"}>
+                  <Badge
+                    variant={
+                      plan.status === "published" ? "default" : "secondary"
+                    }
+                  >
                     {plan.status}
                   </Badge>
                   <span className="text-sm text-muted-foreground">
@@ -130,33 +144,38 @@ export default async function PlanViewPage(
                   </span>
                 </div>
               </div>
-              
-              <div className="flex gap-2">
+
+              {/* --- START: Updated Action Buttons Logic --- */}
+              <div className="flex flex-wrap gap-2">
+                {/* Edit button is now always visible */}
+                <Link href={`/dashboard/plans/${plan.id}/edit`}>
+                  <Button variant="outline">
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                </Link>
+
+                {/* Conditionally show Publish button OR Share section */}
                 {plan.status === "draft" ? (
-                  <>
-                    <Link href={`/dashboard/plans/${plan.id}/edit`}>
-                      <Button variant="outline">
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit
-                      </Button>
-                    </Link>
-                    <form action={publishPlan.bind(null, plan.id)}>
-                      <Button type="submit">
-                        <Globe className="mr-2 h-4 w-4" />
-                        Publish
-                      </Button>
-                    </form>
-                    <form action={deletePlan.bind(null, plan.id)}>
-                      <Button type="submit" variant="destructive">
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </Button>
-                    </form>
-                  </>
+                  <form action={publishPlan.bind(null, plan.id)}>
+                    <Button type="submit">
+                      <Globe className="mr-2 h-4 w-4" />
+                      Publish
+                    </Button>
+                  </form>
                 ) : (
                   <ShareSection publicUrl={publicUrl!} />
                 )}
+
+                {/* Delete button is always available */}
+                <form action={deletePlan.bind(null, plan.id)}>
+                  <Button type="submit" variant="destructive">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                </form>
               </div>
+              {/* --- END: Updated Action Buttons Logic --- */}
             </div>
           </div>
 
@@ -176,20 +195,27 @@ export default async function PlanViewPage(
                     {format(new Date(plan.start_date), "EEEE, MMMM d, yyyy")}
                   </p>
                 </div>
-                <Separator orientation="vertical" className="hidden sm:block h-12" />
+                <Separator
+                  orientation="vertical"
+                  className="hidden sm:block h-12"
+                />
                 <div>
                   <p className="text-sm text-muted-foreground">End Date</p>
                   <p className="font-medium">
                     {format(new Date(plan.end_date), "EEEE, MMMM d, yyyy")}
                   </p>
                 </div>
-                <Separator orientation="vertical" className="hidden sm:block h-12" />
+                <Separator
+                  orientation="vertical"
+                  className="hidden sm:block h-12"
+                />
                 <div>
                   <p className="text-sm text-muted-foreground">Duration</p>
                   <p className="font-medium">
                     {Math.ceil(
-                      (new Date(plan.end_date).getTime() - new Date(plan.start_date).getTime()) /
-                      (1000 * 60 * 60 * 24)
+                      (new Date(plan.end_date).getTime() -
+                        new Date(plan.start_date).getTime()) /
+                        (1000 * 60 * 60 * 24)
                     )}{" "}
                     days
                   </p>
@@ -234,7 +260,7 @@ export default async function PlanViewPage(
                           <PriorityBadge priority={task.priority} />
                         </div>
                       </div>
-                      
+
                       {task.link && (
                         <a
                           href={task.link}
@@ -281,7 +307,7 @@ export default async function PlanViewPage(
                           </p>
                         </div>
                       </div>
-                      
+
                       <div className="flex flex-wrap gap-4 text-sm">
                         {contact.email && (
                           <a
@@ -299,7 +325,7 @@ export default async function PlanViewPage(
                           </span>
                         )}
                       </div>
-                      
+
                       {contact.notes && (
                         <p className="text-sm text-muted-foreground">
                           {contact.notes}
@@ -319,13 +345,16 @@ export default async function PlanViewPage(
 
 // Helper components for badges
 function StatusBadge({ status }: { status: string }) {
-  const variants: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  const variants: Record<
+    string,
+    "default" | "secondary" | "outline" | "destructive"
+  > = {
     pending: "secondary",
     "in-progress": "default",
     review: "outline",
     completed: "default",
   }
-  
+
   return (
     <Badge variant={variants[status] || "secondary"} className="text-xs">
       {status.replace("-", " ")}
@@ -340,7 +369,7 @@ function PriorityBadge({ priority }: { priority: string }) {
     high: "bg-orange-100 text-orange-700 border-orange-200",
     critical: "bg-red-100 text-red-700 border-red-200",
   }
-  
+
   return (
     <Badge className={`text-xs border ${colors[priority] || colors.medium}`}>
       {priority}

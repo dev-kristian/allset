@@ -48,35 +48,12 @@ const navData = {
       ],
     },
     {
-      title: "Account",
-      url: "#",
-      icon: UserCircle,
-      items: [
-        {
-          title: "Profile",
-          url: "#",
-        },
-        {
-          title: "Notifications",
-          url: "#",
-        },
-        {
-          title: "Settings",
-          url: "#",
-        },
-      ],
-    },
-    {
       title: "Help & Support",
       url: "#",
       icon: HelpCircle,
       items: [
         {
           title: "Documentation",
-          url: "#",
-        },
-        {
-          title: "Contact Support",
           url: "#",
         },
         {
