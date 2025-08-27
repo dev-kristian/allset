@@ -23,7 +23,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-// Define the actual navigation structure for HandoverPlan
 const navData = {
   navMain: [
     {
@@ -65,7 +64,6 @@ const navData = {
   ],
 }
 
-// Define user prop type
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user: {
     name: string

@@ -1,6 +1,4 @@
 "use client"
-
-// --- CHANGE: Imports updated for useActionState from 'react' ---
 import { useEffect, useRef, useActionState } from "react" 
 import { useFormStatus } from "react-dom"
 import { MessageSquare, Send } from "lucide-react"
@@ -55,7 +53,6 @@ interface FeedbackFormProps {
 export function FeedbackForm({ open, onOpenChange }: FeedbackFormProps) {
   const formRef = useRef<HTMLFormElement>(null)
   
-  // --- CHANGE: useFormState renamed to useActionState ---
   const [state, formAction] = useActionState(submitFeedback, initialState)
 
   useEffect(() => {

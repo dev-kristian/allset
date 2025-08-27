@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-
 import { PlanItem } from "@/lib/types"
 import { PlanForm } from "@/components/plans/plan-form"
 import { Button } from "@/components/ui/button"
@@ -24,37 +23,32 @@ export default async function EditPlanPage({
 }) {
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
-    notFound()
+    redirect("/login")
   }
 
-  // Fetch the plan with its items
   const { data: plan, error: planError } = await supabase
     .from("plans")
-    .select(
-      `
-      *,
-      plan_items (
-        id,
-        type,
-        content,
-        sort_order
-      )
-    `
-    )
+    .select(`*, plan_items (id, type, content, sort_order)`)
     .eq("id", params.planId)
-    .eq("author_id", user.id)
     .single()
 
   if (planError || !plan) {
     notFound()
   }
 
-  // Transform the data to match the PlanForm component's expected format
+  const { data: currentUserRole } = await supabase.rpc('get_user_role_on_plan', {
+    p_plan_id: params.planId,
+    p_user_id: user.id
+  })
+
+  if (currentUserRole !== 'editor') {
+    notFound()
+  }
+
+  const isOwner = plan.author_id === user.id
+
   const planData = {
     id: plan.id,
     title: plan.title,
@@ -75,19 +69,11 @@ export default async function EditPlanPage({
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumb>
             <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
-              </BreadcrumbItem>
+              <BreadcrumbItem className="hidden md:block"><BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink></BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href={`/dashboard/plans/${params.planId}`}>
-                  {plan.title}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
+              <BreadcrumbItem className="hidden md:block"><BreadcrumbLink href={`/dashboard/plans/${params.planId}`}>{plan.title}</BreadcrumbLink></BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem>
-                <BreadcrumbPage>Edit</BreadcrumbPage>
-              </BreadcrumbItem>
+              <BreadcrumbItem><BreadcrumbPage>Edit</BreadcrumbPage></BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         </div>
@@ -98,22 +84,15 @@ export default async function EditPlanPage({
           <div className="mb-6 space-y-4">
             <div className="flex items-center gap-2">
               <Link href={`/dashboard/plans/${params.planId}`}>
-                <Button variant="ghost" size="sm">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Plan
-                </Button>
+                <Button variant="ghost" size="sm"><ArrowLeft className="mr-2 h-4 w-4" />Back to Plan</Button>
               </Link>
             </div>
-
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Edit Plan</h1>
-              <p className="text-muted-foreground">
-                Make changes to your handover plan
-              </p>
+              <p className="text-muted-foreground">Make changes to your handover plan</p>
             </div>
           </div>
-
-          <PlanForm plan={planData} />
+          <PlanForm plan={planData} isOwner={isOwner} />
         </div>
       </div>
     </>

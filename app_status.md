@@ -291,7 +291,7 @@ CREATE POLICY "Public can view items in published plans." ON plan_items FOR SELE
 #### **Phase 8: Implement User Feedback System**
 
 *   **8.1. Create Feedback Table in Supabase**
-    *   Run the following SQL in the Supabase Editor to create a table for collecting feedback.
+    *   ✅ (Completed) Run the following SQL in the Supabase Editor to create a table for collecting feedback.
 
     ```sql
     -- Create the feedback table
@@ -313,14 +313,14 @@ CREATE POLICY "Public can view items in published plans." ON plan_items FOR SELE
     ```
 
 *   **8.2. Build Feedback Form Component**
-    *   Create a new component `components/feedback/feedback-dialog.tsx`.
-    *   Use a `Dialog` or `Sheet` from shadcn/ui to house a simple form with a `Textarea` for the feedback content and maybe a `Select` for the feedback type.
-    *   Add a "Feedback" or "Help" button to the `AppSidebar` or `NavUser` dropdown that triggers this dialog.
+    * ✅ (Completed)   Create a new component `components/feedback/feedback-dialog.tsx`.
+    * ✅ (Completed)  Use a `Dialog` or `Sheet` from shadcn/ui to house a simple form with a `Textarea` for the feedback content and maybe a `Select` for the feedback type.
+    * ✅ (Completed)  Add a "Feedback" or "Help" button to the `AppSidebar` or `NavUser` dropdown that triggers this dialog.
 
 *   **8.3. Create Feedback Submission Action**
-    *   Create a new file `app/(main)/feedback/actions.ts`.
-    *   Implement a `submitFeedback(formData)` Server Action that takes the form data and inserts it into the new `feedback` table.
-    *   Provide user feedback upon successful submission (e.g., a toast notification).
+    * ✅ (Completed)  Create a new file `app/(main)/feedback/actions.ts`.
+    * ✅ (Completed) Implement a `submitFeedback(formData)` Server Action that takes the form data and inserts it into the new `feedback` table.
+    * ✅ (Completed)  Provide user feedback upon successful submission (e.g., a toast notification).
 
 ---
 
@@ -370,3 +370,242 @@ CREATE POLICY "Public can view items in published plans." ON plan_items FOR SELE
 *   **11.3. Re-Deploy**
     *   Deploy the final, enhanced version of the application to Vercel.
     *   Conduct a final round of testing on the live production URL.
+
+
+---
+
+### **Advanced Sharing, Commenting & Notifications**
+
+This plan outlines the technical steps required to upgrade the existing sharing mechanism to a role-based system with commenting and in-app notifications, mirroring functionality found in collaborative tools like Google Drive.
+
+---
+
+#### **Phase 1: Database & Security Foundation**
+
+This is the most critical phase. We will update our database schema and Row Level Security (RLS) policies to support the new features. All subsequent work depends on a solid foundation here.
+
+*   **1.1. Update `plan_collaborators` Table**
+    *   ✅ (Completed) The existing `role` column will be updated to be the source of truth for permissions. We will treat its values like an `ENUM`: `'viewer'`, `'commenter'`, `'editor'`.
+
+*   **1.2. Create `comments` Table**
+    *   A new table to store all comments related to a plan.
+    *   **Schema:**
+        *   `id` (UUID, PK)
+        *   `plan_id` (UUID, FK to `plans.id`, CASCADE on delete)
+        *   `author_id` (UUID, FK to `profiles.id`, CASCADE on delete)
+        *   `content` (TEXT, not null)
+        *   `parent_comment_id` (UUID, FK to `comments.id`, self-referencing for threads) - *Optional but recommended for future-proofing.*
+        *   `created_at` (TIMESTAMPTZ)
+
+*   **1.3. Create `notifications` Table**
+    *   A new table to manage in-app notifications for users.
+    *   **Schema:**
+        *   `id` (UUID, PK)
+        *   `recipient_id` (UUID, FK to `profiles.id`, CASCADE on delete)
+        *   `actor_id` (UUID, FK to `profiles.id`, who performed the action)
+        *   `type` (TEXT, e.g., `'PLAN_ACCESS_GRANTED'`)
+        *   `resource_id` (UUID, the ID of the plan, comment, etc.)
+        *   `is_read` (BOOLEAN, default `false`)
+        *   `created_at` (TIMESTAMPTZ)
+
+*  ✅ (Completed)  **1.4. Write the Master SQL Update Script**
+    *   **a. Go to the Supabase SQL Editor in your project dashboard.**
+    *   **b. Run the Master SQL Script below.** This script is idempotent and will safely update your existing schema and security policies.
+
+    ```sql
+    -- =================================================================
+    -- ADVANCED SHARING & NOTIFICATIONS - MASTER SQL SCRIPT
+    -- =================================================================
+
+    -- Part 1: Comments Table
+    -- -----------------------------------------------------------------
+    CREATE TABLE public.comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_id UUID NOT NULL REFERENCES public.plans(id) ON DELETE CASCADE,
+      author_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+
+    -- Part 2: Notifications Table
+    -- -----------------------------------------------------------------
+    CREATE TABLE public.notifications (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      recipient_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+      actor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      resource_id UUID, -- The ID of the plan, comment, etc.
+      is_read BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+    -- Part 3: Update RLS Policies & Helper Functions
+    -- -----------------------------------------------------------------
+
+    -- Drop old helper function to replace it
+    DROP FUNCTION IF EXISTS is_plan_collaborator(uuid);
+
+    -- Create a NEW, more powerful helper function that returns the user's role.
+    -- Returns NULL if the user is not a collaborator.
+    CREATE OR REPLACE FUNCTION get_user_role_on_plan(p_plan_id UUID, p_user_id UUID)
+    RETURNS TEXT AS $$
+    DECLARE
+      v_role TEXT;
+    BEGIN
+      -- First, check if the user is the author (owner)
+      IF EXISTS (SELECT 1 FROM plans WHERE id = p_plan_id AND author_id = p_user_id) THEN
+        RETURN 'editor'; -- The author is always an editor
+      END IF;
+      
+      -- If not the author, check the collaborators table
+      SELECT role INTO v_role
+      FROM plan_collaborators
+      WHERE plan_id = p_plan_id AND user_id = p_user_id;
+      
+      RETURN v_role;
+    END;
+    $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+    -- RLS Policies for Comments
+    -- Who can see comments? Any user with any level of access to the plan.
+    CREATE POLICY "Users with access can view comments on a plan." ON public.comments
+      FOR SELECT USING (
+        get_user_role_on_plan(plan_id, auth.uid()) IS NOT NULL OR
+        (SELECT p.access_level FROM plans p WHERE p.id = plan_id) = 'public'
+      );
+
+    -- Who can create comments? Commenters and Editors.
+    CREATE POLICY "Commenters and editors can create comments." ON public.comments
+      FOR INSERT WITH CHECK (
+        get_user_role_on_plan(plan_id, auth.uid()) IN ('commenter', 'editor')
+      );
+
+    -- Who can edit/delete comments? The comment author or the plan owner.
+    CREATE POLICY "Authors can manage their own comments." ON public.comments
+      FOR UPDATE, DELETE USING (auth.uid() = author_id);
+    CREATE POLICY "Plan owners can manage all comments on their plan." ON public.comments
+      FOR UPDATE, DELETE USING (auth.uid() = (SELECT author_id FROM plans WHERE id = plan_id));
+
+
+    -- RLS Policies for Notifications
+    -- Users can only interact with their own notifications.
+    CREATE POLICY "Users can manage their own notifications." ON public.notifications
+      FOR ALL USING (auth.uid() = recipient_id);
+
+    -- =================================================================
+    -- END OF SCRIPT
+    -- =================================================================
+    ```
+
+---
+
+#### **Phase 2: Backend Logic - Server Actions**
+
+This phase focuses on creating the server-side functions that will power the new UI components.
+
+*  ✅ (Completed)  **2.1. Enhance Sharing Actions (`app/(main)/plans/sharing-actions.ts`)**
+    *  ✅ (Completed)  Modify `updateSharingSettings` to accept `role` and a `notify` boolean.
+        *  ✅ (Completed)  When adding a collaborator, it will now `INSERT` or `UPDATE` their entry in `plan_collaborators` with the specified role.
+        *  ✅ (Completed)  If `notify` is `true`, it will also create a new record in the `notifications` table for the invited user.
+    *   Modify `getCollaborators` to return the `role` for each user.
+
+*   **2.2. Create Commenting Actions (`app/(main)/plans/comment-actions.ts`)**
+    *  ✅ (Completed)  Implement `createComment(planId, content)`: Inserts a new comment into the `comments` table. RLS policies will handle security.
+    *   Implement `getComments(planId)`: Fetches all comments for a given plan, joining with the `profiles` table to get author details.
+
+*   **2.3. Create Notification Actions (`app/(main)/notifications/actions.ts`)**
+    *   Implement `getUnreadNotifications()`: Fetches all notifications for the current user where `is_read = false`.
+    *   Implement `markNotificationAsRead(notificationId)`: Updates a notification's `is_read` status to `true`.
+    *   Implement `markAllNotificationsAsRead()`: A convenience function to mark all of the user's notifications as read.
+
+---
+
+#### **Phase 3: UI - The Advanced Share Dialog**
+
+This phase involves redesigning the sharing dialog to incorporate roles and the notification toggle.
+
+*   **3.1. Rebuild `components/plans/share-dialog.tsx`**
+    *  ✅ (Completed)  **Add Collaborator Section:**
+        *   The email input remains. Next to it, add a `Select` dropdown with options: `Viewer`, `Commenter`, `Editor`.
+        *  Add a `Checkbox` labeled "Notify people".
+        *  ✅ (Completed)  The "Add" button will now call the enhanced `updateSharingSettings` action with the email, selected role, and checkbox state.
+    *   **Collaborator List Section:**
+        *  ✅ (Completed)  The list of current collaborators will now display each user's role next to their name.
+        *  ✅ (Completed)  Each list item will have a `Select` dropdown allowing the plan owner to change that user's role on the fly. This will also call `updateSharingSettings`.
+        *   ✅ (Completed) The "Remove" (`X`) button remains, calling `removeCollaborator`.
+    *   **General Access Section:**
+        *  ✅ (Completed)  This section remains the same, controlling the plan's `access_level` (`Restricted` vs. `Anyone with the link`).
+
+---
+
+#### **Phase 4: UI - The Commenting System**
+
+This phase involves creating the components necessary for users to view and write comments.
+
+*   **4.1. Create `components/comments/comment-list.tsx`**
+    *   This component will fetch and display a list of comments for a plan.
+    *   Each comment should show the author's avatar, name, the comment content, and a timestamp.
+
+*   **4.2. Create `components/comments/comment-form.tsx`**
+    *   This component will contain a `Textarea` and a "Post Comment" button.
+    *   It will use a server action (`createComment`) for submission.
+
+*   **4.3. Create `components/comments/comment-section.tsx`**
+    *   This will be the main container component.
+    *   It will fetch the user's role on the current plan.
+    *   It will render the `<CommentList />`.
+    *   It will *conditionally* render the `<CommentForm />` only if the user's role is `commenter` or `editor`.
+
+*   **4.4. Integrate into Plan View Page**
+    *   Add the `<CommentSection planId={plan.id} />` to the bottom of `app/(main)/dashboard/plans/[planId]/page.tsx`.
+
+---
+
+#### **Phase 5: UI - The In-App Notification System**
+
+This phase creates the user-facing part of the notification system.
+
+*   **5.1. Create `components/navigation/notification-bell.tsx`**
+    *   This component will render a bell icon, likely in the app header or user menu.
+    *   It should display a badge with the count of unread notifications.
+    *   When clicked, it will open a `DropdownMenu` or `Popover`.
+    *   The dropdown will list the user's recent notifications, fetched via the `getUnreadNotifications` action.
+    *   Each notification item should be clickable, linking to the relevant plan (`/dashboard/plans/[resource_id]`) and simultaneously calling `markNotificationAsRead`.
+
+*   **5.2. Integrate into the Main Layout**
+    *   Add the `<NotificationBell />` component into a suitable place, such as `components/navigation/app-sidebar.tsx` or `components/navigation/nav-user.tsx`.
+
+---
+
+#### **Phase 6: Permissions Enforcement Across the App**
+
+This phase is about ensuring the entire application respects the new, granular roles.
+
+*   **6.1. Secure the Plan View Page (`app/(main)/dashboard/plans/[planId]/page.tsx`)**
+    *   In this server component, fetch the current user's role for the plan using `get_user_role_on_plan`.
+    *   Pass the role down as a prop to client components.
+    *   Conditionally render the "Edit" button only if the role is `editor`.
+
+*   **6.2. Secure the Plan Edit Page (`app/(main)/dashboard/plans/[planId]/edit/page.tsx`)**
+    *   At the top of this server component, fetch the user's role.
+    *   If the role is not `editor`, immediately call `notFound()` or redirect the user to deny access. This is a critical server-side security check.
+
+---
+
+#### **Phase 7: Final Polish & Testing**
+
+*   **7.1. Add Loading & Feedback States**
+    *   Ensure all new forms and actions have loading indicators (`useTransition`, `useFormStatus`).
+    *   Use `sonner` toasts to provide feedback for all operations (comment posted, role changed, notification sent, etc.).
+
+*   **7.2. End-to-End Testing**
+    *   Create test users.
+    *   Test every permutation:
+        *   Owner invites a Viewer. Verify the Viewer can see the plan but not the Edit button or comment form.
+        *   Owner changes Viewer to Commenter. Verify the Commenter can now see the comment form.
+        *   Owner changes Commenter to Editor. Verify the Editor can now see the Edit button.
+        *   Verify notifications are created and can be marked as read.
+        *   Verify an un-invited user cannot access a restricted plan.

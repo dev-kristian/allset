@@ -4,7 +4,6 @@ import { format } from "date-fns"
 import {
   Calendar,
   Edit,
-  Globe,
   ArrowLeft,
   ExternalLink,
   Mail,
@@ -12,11 +11,13 @@ import {
   User,
   FileText,
   Trash2,
+  LogOut,
 } from "lucide-react"
 
-import { PlanItem, Task, Contact } from "@/lib/types"
-import { publishPlan, deletePlan } from "@/app/(main)/plans/actions"
-import { ShareSection } from "@/components/plans/share-section"
+import { PlanItem, Task, Contact, Collaborator } from "@/lib/types"
+import { deletePlan } from "@/app/(main)/plans/actions"
+import { leavePlan } from "@/app/(main)/plans/sharing-actions"
+import { ShareDialog } from "@/components/plans/share-section"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -46,52 +47,51 @@ export default async function PlanViewPage({
   const { planId } = await params
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return redirect("/login")
   }
 
-  // Fetch the plan with its items
+  const { data: currentUserRole } = await supabase.rpc('get_user_role_on_plan', {
+    p_plan_id: planId,
+    p_user_id: user.id
+  })
+
+  if (!currentUserRole) {
+    notFound()
+  }
+
   const { data: plan, error: planError } = await supabase
     .from("plans")
-    .select(
-      `
-      *,
-      plan_items (
-        id,
-        type,
-        content,
-        sort_order
-      )
-    `
-    )
+    .select( `*, plan_items (id, type, content, sort_order)`)
     .eq("id", planId)
-    .eq("author_id", user.id)
     .single()
 
   if (planError || !plan) {
     notFound()
   }
 
-  // Separate tasks and contacts
-  const tasks =
-    plan.plan_items
-      ?.filter((item: PlanItem) => item.type === "task")
-      ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+  const isCurrentUserOwner = user.id === plan.author_id
 
-  const contacts =
-    plan.plan_items
-      ?.filter((item: PlanItem) => item.type === "contact")
-      ?.sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+  const { data: ownerProfile } = await supabase
+    .from("profiles")
+    .select('full_name, email, avatar_url')
+    .eq('id', plan.author_id)
+    .single()
 
-  const publicUrl = plan.public_link_id
-    ? `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/${
-        plan.public_link_id
-      }`
-    : null
+  const { data: collaboratorsData } = await supabase
+    .from("plan_collaborators")
+    .select(`user_id, role, profile:profiles (full_name, avatar_url, email)`)
+    .eq("plan_id", planId)
+
+  const collaborators: Collaborator[] = (collaboratorsData || []).map((c) => ({
+    ...c,
+    profile: Array.isArray(c.profile) ? c.profile[0] : c.profile,
+  }))
+
+  const tasks = plan.plan_items?.filter((i: PlanItem) => i.type === "task").sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+  const contacts = plan.plan_items?.filter((i: PlanItem) => i.type === "contact").sort((a: PlanItem, b: PlanItem) => a.sort_order - b.sort_order) || []
+  const publicUrl = plan.public_link_id ? `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/${plan.public_link_id}` : null
 
   return (
     <>
@@ -101,13 +101,9 @@ export default async function PlanViewPage({
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumb>
             <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
-              </BreadcrumbItem>
+              <BreadcrumbItem className="hidden md:block"><BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink></BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem>
-                <BreadcrumbPage>{plan.title}</BreadcrumbPage>
-              </BreadcrumbItem>
+              <BreadcrumbItem><BreadcrumbPage>{plan.title}</BreadcrumbPage></BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         </div>
@@ -115,163 +111,96 @@ export default async function PlanViewPage({
 
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
         <div className="mx-auto w-full max-w-4xl">
-          {/* Header with actions */}
           <div className="mb-6 space-y-4">
             <div className="flex items-center gap-2">
-              <Link href="/dashboard">
-                <Button variant="ghost" size="sm">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Dashboard
-                </Button>
-              </Link>
+              <Link href="/dashboard"><Button variant="ghost" size="sm"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
             </div>
-
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight">
-                  {plan.title}
-                </h1>
+                <h1 className="text-3xl font-bold tracking-tight">{plan.title}</h1>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge
-                    variant={
-                      plan.status === "published" ? "default" : "secondary"
-                    }
-                  >
-                    {plan.status}
-                  </Badge>
-                  <span className="text-sm text-muted-foreground">
-                    Created {format(new Date(plan.created_at), "MMM d, yyyy")}
-                  </span>
+                  <Badge variant={plan.status === "published" ? "default" : "secondary"}>{plan.status}</Badge>
+                  <span className="text-sm text-muted-foreground">Created {format(new Date(plan.created_at), "MMM d, yyyy")}</span>
                 </div>
               </div>
 
-              {/* --- START: Updated Action Buttons Logic --- */}
               <div className="flex flex-wrap gap-2">
-                {/* Edit button is now always visible */}
-                <Link href={`/dashboard/plans/${plan.id}/edit`}>
-                  <Button variant="outline">
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                </Link>
-
-                {/* Conditionally show Publish button OR Share section */}
-                {plan.status === "draft" ? (
-                  <form action={publishPlan.bind(null, plan.id)}>
-                    <Button type="submit">
-                      <Globe className="mr-2 h-4 w-4" />
-                      Publish
-                    </Button>
+                {currentUserRole === 'editor' && (
+                  <Link href={`/dashboard/plans/${plan.id}/edit`}>
+                    <Button variant="outline"><Edit className="mr-2 h-4 w-4" />Edit</Button>
+                  </Link>
+                )}
+                <ShareDialog
+                  planId={plan.id}
+                  planTitle={plan.title}
+                  publicUrl={publicUrl}
+                  accessLevel={plan.access_level as "restricted" | "public"}
+                  collaborators={collaborators}
+                  currentUserId={user.id}
+                  owner={{
+                    id: plan.author_id,
+                    name: ownerProfile?.full_name ?? "Owner",
+                    email: ownerProfile?.email ?? "",
+                    avatar: ownerProfile?.avatar_url ?? null,
+                  }}
+                />
+                {isCurrentUserOwner ? (
+                  <form action={deletePlan.bind(null, plan.id)}>
+                    <Button type="submit" variant="destructive"><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
                   </form>
                 ) : (
-                  <ShareSection publicUrl={publicUrl!} />
+                  <form action={leavePlan.bind(null, plan.id)}>
+                    <Button type="submit" variant="destructive" ><LogOut className="mr-2 h-4 w-4" />Leave Plan</Button>
+                  </form>
                 )}
-
-                {/* Delete button is always available */}
-                <form action={deletePlan.bind(null, plan.id)}>
-                  <Button type="submit" variant="destructive">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </Button>
-                </form>
               </div>
-              {/* --- END: Updated Action Buttons Logic --- */}
             </div>
           </div>
 
-          {/* Plan Information */}
           <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Coverage Period
-              </CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Calendar className="h-5 w-5" />Coverage Period</CardTitle></CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Start Date</p>
-                  <p className="font-medium">
-                    {format(new Date(plan.start_date), "EEEE, MMMM d, yyyy")}
-                  </p>
+                  <p className="font-medium">{format(new Date(plan.start_date), "EEEE, MMMM d, yyyy")}</p>
                 </div>
-                <Separator
-                  orientation="vertical"
-                  className="hidden sm:block h-12"
-                />
+                <Separator orientation="vertical" className="hidden sm:block h-12" />
                 <div>
                   <p className="text-sm text-muted-foreground">End Date</p>
-                  <p className="font-medium">
-                    {format(new Date(plan.end_date), "EEEE, MMMM d, yyyy")}
-                  </p>
+                  <p className="font-medium">{format(new Date(plan.end_date), "EEEE, MMMM d, yyyy")}</p>
                 </div>
-                <Separator
-                  orientation="vertical"
-                  className="hidden sm:block h-12"
-                />
+                <Separator orientation="vertical" className="hidden sm:block h-12" />
                 <div>
                   <p className="text-sm text-muted-foreground">Duration</p>
-                  <p className="font-medium">
-                    {Math.ceil(
-                      (new Date(plan.end_date).getTime() -
-                        new Date(plan.start_date).getTime()) /
-                        (1000 * 60 * 60 * 24)
-                    )}{" "}
-                    days
-                  </p>
+                  <p className="font-medium">{Math.ceil((new Date(plan.end_date).getTime() - new Date(plan.start_date).getTime()) / (1000 * 60 * 60 * 24))} days</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Tasks Section */}
           {tasks.length > 0 && (
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Tasks & Projects ({tasks.length})
-                </CardTitle>
-                <CardDescription>
-                  Active tasks and projects requiring attention
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Tasks & Projects ({tasks.length})</CardTitle>
+                <CardDescription>Active tasks and projects requiring attention</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {tasks.map((item: PlanItem, index: number) => {
                   const task = item.content as Task
                   return (
-                    <div
-                      key={item.id}
-                      className="rounded-lg border p-4 space-y-3"
-                    >
+                    <div key={item.id} className="rounded-lg border p-4 space-y-3">
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <h4 className="font-medium">
-                            {index + 1}. {task.title}
-                          </h4>
-                          {task.notes && (
-                            <p className="text-sm text-muted-foreground">
-                              {task.notes}
-                            </p>
-                          )}
+                          <h4 className="font-medium">{index + 1}. {task.title}</h4>
+                          {task.notes && <p className="text-sm text-muted-foreground">{task.notes}</p>}
                         </div>
                         <div className="flex gap-2">
                           <StatusBadge status={task.status} />
                           <PriorityBadge priority={task.priority} />
                         </div>
                       </div>
-
-                      {task.link && (
-                        <a
-                          href={task.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          View Resource
-                        </a>
-                      )}
+                      {task.link && <a href={task.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline"><ExternalLink className="h-3 w-3" />View Resource</a>}
                     </div>
                   )
                 })}
@@ -279,58 +208,28 @@ export default async function PlanViewPage({
             </Card>
           )}
 
-          {/* Contacts Section */}
           {contacts.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Important Contacts ({contacts.length})
-                </CardTitle>
-                <CardDescription>
-                  Key people to contact for specific issues
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" />Important Contacts ({contacts.length})</CardTitle>
+                <CardDescription>Key people to contact for specific issues</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {contacts.map((item: PlanItem) => {
                   const contact = item.content as Contact
                   return (
-                    <div
-                      key={item.id}
-                      className="rounded-lg border p-4 space-y-2"
-                    >
+                    <div key={item.id} className="rounded-lg border p-4 space-y-2">
                       <div className="flex items-start justify-between">
                         <div>
                           <h4 className="font-medium">{contact.name}</h4>
-                          <p className="text-sm text-muted-foreground">
-                            {contact.role}
-                          </p>
+                          <p className="text-sm text-muted-foreground">{contact.role}</p>
                         </div>
                       </div>
-
                       <div className="flex flex-wrap gap-4 text-sm">
-                        {contact.email && (
-                          <a
-                            href={`mailto:${contact.email}`}
-                            className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-                          >
-                            <Mail className="h-3 w-3" />
-                            {contact.email}
-                          </a>
-                        )}
-                        {contact.phone && (
-                          <span className="inline-flex items-center gap-1 text-muted-foreground">
-                            <Phone className="h-3 w-3" />
-                            {contact.phone}
-                          </span>
-                        )}
+                        {contact.email && <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"><Mail className="h-3 w-3" />{contact.email}</a>}
+                        {contact.phone && <span className="inline-flex items-center gap-1 text-muted-foreground"><Phone className="h-3 w-3" />{contact.phone}</span>}
                       </div>
-
-                      {contact.notes && (
-                        <p className="text-sm text-muted-foreground">
-                          {contact.notes}
-                        </p>
-                      )}
+                      {contact.notes && <p className="text-sm text-muted-foreground">{contact.notes}</p>}
                     </div>
                   )
                 })}
@@ -343,36 +242,17 @@ export default async function PlanViewPage({
   )
 }
 
-// Helper components for badges
 function StatusBadge({ status }: { status: string }) {
-  const variants: Record<
-    string,
-    "default" | "secondary" | "outline" | "destructive"
-  > = {
-    pending: "secondary",
-    "in-progress": "default",
-    review: "outline",
-    completed: "default",
+  const variants: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+    pending: "secondary", "in-progress": "default", review: "outline", completed: "default",
   }
-
-  return (
-    <Badge variant={variants[status] || "secondary"} className="text-xs">
-      {status.replace("-", " ")}
-    </Badge>
-  )
+  return <Badge variant={variants[status] || "secondary"} className="text-xs">{status.replace("-", " ")}</Badge>
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
   const colors: Record<string, string> = {
-    low: "bg-slate-100 text-slate-700 border-slate-200",
-    medium: "bg-blue-100 text-blue-700 border-blue-200",
-    high: "bg-orange-100 text-orange-700 border-orange-200",
-    critical: "bg-red-100 text-red-700 border-red-200",
+    low: "bg-slate-100 text-slate-700 border-slate-200", medium: "bg-blue-100 text-blue-700 border-blue-200",
+    high: "bg-orange-100 text-orange-700 border-orange-200", critical: "bg-red-100 text-red-700 border-red-200",
   }
-
-  return (
-    <Badge className={`text-xs border ${colors[priority] || colors.medium}`}>
-      {priority}
-    </Badge>
-  )
+  return <Badge className={`text-xs border ${colors[priority] || colors.medium}`}>{priority}</Badge>
 }

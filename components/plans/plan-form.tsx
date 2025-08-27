@@ -62,14 +62,16 @@ interface PlanFormProps {
       content: Task | Contact
       sort_order: number
     }>
-  }
+  },
+  isOwner?: boolean;
 }
 
-export function PlanForm({ plan }: PlanFormProps) {
+export function PlanForm({ plan, isOwner }: PlanFormProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   
-  // Initialize form state
+  const canSaveAsDraft = isOwner !== false;
+  
   const [title, setTitle] = useState(plan?.title || "")
   const [startDate, setStartDate] = useState<Date | undefined>(
     plan?.start_date ? new Date(plan.start_date) : undefined
@@ -78,7 +80,6 @@ export function PlanForm({ plan }: PlanFormProps) {
     plan?.end_date ? new Date(plan.end_date) : undefined
   )
 
-  // Initialize tasks and contacts from plan items if editing
   const initialTasks: Task[] =
     plan?.items
       ?.filter((item): item is { type: 'task'; content: Task, sort_order: number } => item.type === 'task')
@@ -115,7 +116,6 @@ export function PlanForm({ plan }: PlanFormProps) {
     ]
   )
 
-  // Task management functions
   const addTask = () => {
     setTasks([
       ...tasks,
@@ -135,7 +135,6 @@ export function PlanForm({ plan }: PlanFormProps) {
     ))
   }
 
-  // Contact management functions
   const addContact = () => {
     setContacts([
       ...contacts,
@@ -155,7 +154,6 @@ export function PlanForm({ plan }: PlanFormProps) {
     ))
   }
 
-  // Form submission
   const handleSubmit = async (action: 'draft' | 'publish') => {
     setIsSubmitting(true)
     
@@ -166,18 +164,16 @@ export function PlanForm({ plan }: PlanFormProps) {
       formData.append('end_date', endDate?.toISOString() || '')
       formData.append('status', action === 'publish' ? 'published' : 'draft')
       
-      // Add tasks as JSON
       const taskItems = tasks
-        .filter(task => task.title) // Only include tasks with titles
+        .filter(task => task.title)
         .map((task, index) => ({
           type: 'task',
           content: task,
           sort_order: index
         }))
       
-      // Add contacts as JSON
       const contactItems = contacts
-        .filter(contact => contact.name) // Only include contacts with names
+        .filter(contact => contact.name)
         .map((contact, index) => ({
           type: 'contact',
           content: contact,
@@ -204,7 +200,6 @@ export function PlanForm({ plan }: PlanFormProps) {
 
   return (
     <div className="space-y-6">
-      {/* Basic Information */}
       <Card>
         <CardHeader>
           <CardTitle>Plan Information</CardTitle>
@@ -280,7 +275,6 @@ export function PlanForm({ plan }: PlanFormProps) {
         </CardContent>
       </Card>
 
-      {/* Tasks/Projects Section */}
       <Card>
         <CardHeader>
           <CardTitle>Tasks & Projects</CardTitle>
@@ -387,7 +381,6 @@ export function PlanForm({ plan }: PlanFormProps) {
         </CardContent>
       </Card>
 
-      {/* Contacts Section */}
       <Card>
         <CardHeader>
           <CardTitle>Important Contacts</CardTitle>
@@ -477,7 +470,6 @@ export function PlanForm({ plan }: PlanFormProps) {
         </CardContent>
       </Card>
 
-      {/* Action Buttons */}
       <div className="flex justify-end gap-3">
         <Button
           type="button"
@@ -487,20 +479,22 @@ export function PlanForm({ plan }: PlanFormProps) {
         >
           Cancel
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => handleSubmit('draft')}
-          disabled={isSubmitting || !title || !startDate || !endDate}
-        >
-          {isSubmitting ? "Saving..." : "Save as Draft"}
-        </Button>
+        {canSaveAsDraft && (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => handleSubmit('draft')}
+            disabled={isSubmitting || !title || !startDate || !endDate}
+          >
+            {isSubmitting ? "Saving..." : "Save as Draft"}
+          </Button>
+        )}
         <Button
           type="button"
           onClick={() => handleSubmit('publish')}
           disabled={isSubmitting || !title || !startDate || !endDate}
         >
-          {isSubmitting ? "Publishing..." : "Publish Plan"}
+          {isSubmitting ? "Publishing..." : (canSaveAsDraft ? "Publish Plan" : "Publish Changes")}
         </Button>
       </div>
     </div>

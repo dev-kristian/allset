@@ -32,3 +32,13 @@ export interface PlanWithProfiles {
   plan_items?: PlanItem[]
   profiles: { full_name: string }[] | null
 }
+
+export interface Collaborator {
+  user_id: string
+  role: 'viewer' | 'commenter' | 'editor'
+  profile: {
+    full_name: string | null
+    avatar_url: string | null
+    email: string | null
+  } | null
+}

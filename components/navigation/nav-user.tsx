@@ -1,18 +1,14 @@
 "use client"
 
-import { useState } from "react" // <-- Import useState
+import { useState } from "react"
 import {
-  BadgeCheck,
-  Bell,
   ChevronsUpDown,
-  CreditCard,
   LogOut,
-  MessageSquare, // <-- Import an icon
-  Sparkles,
+  MessageSquare,
 } from "lucide-react"
 
 import { signOut } from "@/app/(auth)/actions"
-import { FeedbackForm } from "@/components/feedback/feedback-form" // <-- Import the form
+import { FeedbackForm } from "@/components/feedback/feedback-form"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -41,7 +37,7 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
-  const [feedbackOpen, setFeedbackOpen] = useState(false) // <-- Add state for dialog
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   return (
     <>
