@@ -58,7 +58,7 @@ const navData = {
         },
         {
           title: "FAQs",
-          url: "#",
+          url: "/faq", // <-- Updated link
         },
       ],
     },
