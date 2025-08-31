@@ -29,9 +29,11 @@ export function NavMain({
     url: string
     icon?: LucideIcon
     isActive?: boolean
+    onClick?: (e: React.MouseEvent) => void
     items?: {
       title: string
       url: string
+      onClick?: (e: React.MouseEvent) => void
     }[]
   }[]
 }) {
@@ -54,10 +56,20 @@ export function NavMain({
                   isActive={isActive}
                   asChild
                 >
-                  <Link href={item.url}>
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
-                  </Link>
+                  {item.onClick ? (
+                    <button
+                      onClick={item.onClick}
+                      className="w-full text-left"
+                    >
+                      {item.icon && <item.icon />}
+                      <span>{item.title}</span>
+                    </button>
+                  ) : (
+                    <Link href={item.url}>
+                      {item.icon && <item.icon />}
+                      <span>{item.title}</span>
+                    </Link>
+                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )
@@ -90,9 +102,18 @@ export function NavMain({
                           asChild
                           isActive={pathname === subItem.url}
                         >
-                          <Link href={subItem.url}>
-                            <span>{subItem.title}</span>
-                          </Link>
+                          {subItem.onClick ? (
+                            <button
+                              onClick={subItem.onClick}
+                              className="w-full text-left"
+                            >
+                              <span>{subItem.title}</span>
+                            </button>
+                          ) : (
+                            <Link href={subItem.url}>
+                              <span>{subItem.title}</span>
+                            </Link>
+                          )}
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
                     ))}

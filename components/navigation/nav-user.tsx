@@ -1,14 +1,11 @@
 "use client"
 
-import { useState } from "react"
 import {
   ChevronsUpDown,
   LogOut,
-  MessageSquare,
 } from "lucide-react"
 
 import { signOut } from "@/app/(auth)/actions"
-import { FeedbackForm } from "@/components/feedback/feedback-form"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,7 +34,6 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
-  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   return (
     <>
@@ -84,15 +80,6 @@ export function NavUser({
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault()
-                    setFeedbackOpen(true)
-                  }}
-                >
-                  <MessageSquare />
-                  Send Feedback
-                </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
@@ -111,7 +98,6 @@ export function NavUser({
           </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
-      <FeedbackForm open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </>
   )
 }

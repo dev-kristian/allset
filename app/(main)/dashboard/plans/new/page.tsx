@@ -35,7 +35,7 @@ export default async function NewPlanPage() {
         </div>
       </header>
       
-      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      <div className="flex flex-1 flex-col gap-4 p-2 pt-0">
         <div className="mx-auto w-full max-w-4xl">
           <div className="mb-6">
             <h1 className="text-3xl font-bold tracking-tight">Create New Plan</h1>

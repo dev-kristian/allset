@@ -41,6 +41,7 @@ async function getProfileByEmail(email: string) {
 
 export async function addCollaborator(
   planId: string,
+  prevState: FormState,
   formData: FormData
 ): Promise<FormState> {
   const supabase = await createClient()

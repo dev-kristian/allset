@@ -12,19 +12,24 @@ const faqs = [
       "A handover plan is a document that outlines your key responsibilities, active projects, important contacts, and other critical information for the person covering for you while you are away (e.g., on vacation or leave). Its goal is to ensure a smooth transition and minimize disruptions.",
   },
   {
-    question: "Who can see my published plans?",
+    question: "Who can see my plans?",
     answer:
-      "Only people with the unique, randomly generated public link can view your published plan. The plans are not indexed by search engines. You have full control over who you share the link with.",
+      "You have full control. Plans can be 'Restricted', meaning only people you explicitly invite as collaborators can access them. Alternatively, you can set a plan to 'Public', which generates a unique, unguessable link that anyone can use to view a read-only version. Public plans are not indexed by search engines.",
   },
   {
     question: "Can I edit a plan after it has been published?",
     answer:
-      "No, for data integrity, a plan cannot be edited once it is published. If you need to make changes, we recommend you un-publish it (a feature coming soon), or duplicate the plan, make your edits, and then publish the new version.",
+      "Yes! The plan owner and any collaborators with an 'editor' role can modify a plan at any time, even after it's published. All changes are saved and are immediately visible to everyone who has access to the plan.",
+  },
+  {
+    question: "How does team collaboration work?",
+    answer:
+      "You can invite team members to your plan via email. Each person can be assigned a role: 'Editor' (can fully edit the plan), 'Commenter' (can view and leave comments), or 'Viewer' (can only view the plan). This allows for seamless teamwork to build the perfect handover document.",
   },
   {
     question: "Is my data secure?",
     answer:
-      "Yes, we take data security seriously. Your data is stored securely with Supabase, and we use industry-standard authentication and authorization practices. Only you can access and manage your draft plans.",
+      "Yes, we take data security seriously. Your data is stored securely with Supabase, and we use industry-standard authentication and authorization practices. Only you and your invited collaborators can access your plans based on the permissions you set.",
   },
 ]
 

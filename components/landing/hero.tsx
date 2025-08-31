@@ -18,7 +18,7 @@ interface HeroProps {
     primary?: ButtonConfig
     secondary?: ButtonConfig
   }
-  image: {
+  image?: {
     src: string
     alt: string
   }
@@ -27,7 +27,7 @@ interface HeroProps {
 const Hero = ({
   badge = "Now in Public Beta ✨",
   heading = "Ensure a Seamless Handover, Every Time.",
-  description = "HandoverPlan helps you create clear, comprehensive, and shareable handover plans, so you can take time off with peace of mind and your team can stay productive.",
+  description = "HandoverPlan helps you create clear, comprehensive plans, collaborate with your team, and share them securely. Take time off with peace of mind, knowing everyone is on the same page.",
   buttons = {
     primary: {
       text: "Create Your First Plan",
@@ -40,8 +40,8 @@ const Hero = ({
     },
   },
   image = {
-    src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/placeholder-1.svg",
-    alt: "Screenshot of the HandoverPlan application dashboard.",
+    src: "/hero.png",
+    alt: "Screenshot of a sample handover plan.",
   },
 }: HeroProps) => {
   return (
@@ -82,13 +82,15 @@ const Hero = ({
               )}
             </div>
           </div>
-          <Image
-            src={image.src}
-            alt={image.alt}
-            width={1024}
-            height={576}
-            className="max-h-96 w-full rounded-md object-cover"
-          />
+          <div className="rounded-xl border bg-card p-4 shadow-lg">
+            <Image
+              src={image.src}
+              alt={image.alt}
+              width={1024}
+              height={576}
+              className="max-h-96 w-full rounded-md object-cover"
+            />
+          </div>
         </div>
       </div>
     </section>

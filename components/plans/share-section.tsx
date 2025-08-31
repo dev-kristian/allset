@@ -5,14 +5,12 @@
 import { useActionState, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
-  Copy,
   Globe,
   Link as LinkIcon,
   Loader2,
   Lock,
   Plus,
   Send,
-  User,
   X,
 } from "lucide-react"
 
@@ -24,7 +22,6 @@ import {
 } from "@/app/(main)/plans/sharing-actions"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -114,7 +111,7 @@ export function ShareDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Share "{planTitle}"</DialogTitle>
+          <DialogTitle>Share &quot;{planTitle}&quot;</DialogTitle>
           <DialogDescription>
             Manage collaborators or change the general access level.
           </DialogDescription>

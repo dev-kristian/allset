@@ -30,10 +30,6 @@ export default async function Home() {
               url: "#features",
             },
           }}
-          image={{
-            src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/placeholder-1.svg",
-            alt: "Screenshot of the HandoverPlan application dashboard showing handover plans.",
-          }}
         />
         <Features />
         <Faq />

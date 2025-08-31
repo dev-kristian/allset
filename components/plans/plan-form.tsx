@@ -2,19 +2,14 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { DateRange } from "react-day-picker"
 import { format } from "date-fns"
-import { CalendarIcon, Plus, Trash2, GripVertical } from "lucide-react"
+import { CalendarIcon, Plus, Trash2 } from "lucide-react"
 
 import { createPlan, updatePlan } from "@/app/(main)/plans/actions"
 import { Button } from "@/components/ui/button"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { Calendar } from "@/components/ui/calendar"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -32,6 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 
+// Interfaces remain the same as they define the data structure
 interface Task {
   id: string
   title: string
@@ -62,23 +58,20 @@ interface PlanFormProps {
       content: Task | Contact
       sort_order: number
     }>
-  },
-  isOwner?: boolean;
+  }
+  isOwner?: boolean
 }
 
-export function PlanForm({ plan, isOwner }: PlanFormProps) {
+export function PlanForm({ plan, isOwner = true }: PlanFormProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  
-  const canSaveAsDraft = isOwner !== false;
+  const isMobile = useIsMobile()
   
   const [title, setTitle] = useState(plan?.title || "")
-  const [startDate, setStartDate] = useState<Date | undefined>(
-    plan?.start_date ? new Date(plan.start_date) : undefined
-  )
-  const [endDate, setEndDate] = useState<Date | undefined>(
-    plan?.end_date ? new Date(plan.end_date) : undefined
-  )
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: plan?.start_date ? new Date(plan.start_date) : undefined,
+    to: plan?.end_date ? new Date(plan.end_date) : undefined,
+  })
 
   const initialTasks: Task[] =
     plan?.items
@@ -116,69 +109,25 @@ export function PlanForm({ plan, isOwner }: PlanFormProps) {
     ]
   )
 
-  const addTask = () => {
-    setTasks([
-      ...tasks,
-      { id: crypto.randomUUID(), title: "", status: "pending", priority: "medium" }
-    ])
-  }
+  const addTask = () => setTasks([...tasks, { id: crypto.randomUUID(), title: "", status: "pending", priority: "medium" }])
+  const removeTask = (id: string) => tasks.length > 1 && setTasks(tasks.filter(task => task.id !== id))
+  const updateTask = (id: string, field: keyof Task, value: string) => setTasks(tasks.map(task => task.id === id ? { ...task, [field]: value } : task))
 
-  const removeTask = (id: string) => {
-    if (tasks.length > 1) {
-      setTasks(tasks.filter(task => task.id !== id))
-    }
-  }
-
-  const updateTask = (id: string, field: keyof Task, value: string) => {
-    setTasks(tasks.map(task => 
-      task.id === id ? { ...task, [field]: value } : task
-    ))
-  }
-
-  const addContact = () => {
-    setContacts([
-      ...contacts,
-      { id: crypto.randomUUID(), name: "", role: "" }
-    ])
-  }
-
-  const removeContact = (id: string) => {
-    if (contacts.length > 1) {
-      setContacts(contacts.filter(contact => contact.id !== id))
-    }
-  }
-
-  const updateContact = (id: string, field: keyof Contact, value: string) => {
-    setContacts(contacts.map(contact => 
-      contact.id === id ? { ...contact, [field]: value } : contact
-    ))
-  }
+  const addContact = () => setContacts([...contacts, { id: crypto.randomUUID(), name: "", role: "" }])
+  const removeContact = (id: string) => contacts.length > 1 && setContacts(contacts.filter(contact => contact.id !== id))
+  const updateContact = (id: string, field: keyof Contact, value: string) => setContacts(contacts.map(contact => contact.id === id ? { ...contact, [field]: value } : contact))
 
   const handleSubmit = async (action: 'draft' | 'publish') => {
     setIsSubmitting(true)
-    
     try {
       const formData = new FormData()
       formData.append('title', title)
-      formData.append('start_date', startDate?.toISOString() || '')
-      formData.append('end_date', endDate?.toISOString() || '')
+      formData.append('start_date', date?.from?.toISOString() || '')
+      formData.append('end_date', date?.to?.toISOString() || '')
       formData.append('status', action === 'publish' ? 'published' : 'draft')
       
-      const taskItems = tasks
-        .filter(task => task.title)
-        .map((task, index) => ({
-          type: 'task',
-          content: task,
-          sort_order: index
-        }))
-      
-      const contactItems = contacts
-        .filter(contact => contact.name)
-        .map((contact, index) => ({
-          type: 'contact',
-          content: contact,
-          sort_order: taskItems.length + index
-        }))
+      const taskItems = tasks.filter(task => task.title).map((task, index) => ({ type: 'task', content: task, sort_order: index }))
+      const contactItems = contacts.filter(contact => contact.name).map((contact, index) => ({ type: 'contact', content: contact, sort_order: taskItems.length + index }))
       
       formData.append('items', JSON.stringify([...taskItems, ...contactItems]))
       
@@ -192,311 +141,323 @@ export function PlanForm({ plan, isOwner }: PlanFormProps) {
       router.refresh()
     } catch (error) {
       console.error('Error saving plan:', error)
-      // TODO: Show error toast
+      // TODO: Show an error toast to the user
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Plan Information</CardTitle>
-          <CardDescription>
-            Set up the basic details for your handover plan
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Plan Title</Label>
-            <Input
-              id="title"
-              placeholder="Q1 2024 Handover Plan"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-            />
+    <form onSubmit={(e) => e.preventDefault()} className="relative">
+      <div className="space-y-4 sm:space-y-8 pb-20 sm:pb-28">
+        <div className="rounded-xl border bg-card shadow-sm">
+          <div className="border-b p-3 sm:p-6">
+            <h2 className="text-lg font-semibold leading-none tracking-tight">Plan Details</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Basic information about your handover plan</p>
           </div>
-          
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="p-3 sm:p-6 space-y-4">
             <div className="space-y-2">
-              <Label>Start Date</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="title" className="font-medium">
+                  Plan Title <span className="text-destructive">*</span>
+                </Label>
+              </div>
+              <Input
+                id="title"
+                placeholder="e.g., Q3 Marketing Campaign Handover"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                className="text-base"
+              />
+              <p className="text-sm text-muted-foreground">A clear and descriptive title for the plan.</p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="font-medium">
+                  Coverage Period <span className="text-destructive">*</span>
+                </Label>
+              </div>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !startDate && "text-muted-foreground"
+                      "w-full justify-start text-left font-normal py-4 sm:py-6 text-base",
+                      !date && "text-muted-foreground"
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, "PPP") : "Pick a date"}
+                    {date?.from ? (
+                      date.to ? (
+                        <>
+                          {format(date.from, "LLL dd, y")} -{" "}
+                          {format(date.to, "LLL dd, y")}
+                        </>
+                      ) : (
+                        format(date.from, "LLL dd, y")
+                      )
+                    ) : (
+                      <span className="text-muted-foreground">Pick a date range</span>
+                    )}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={setStartDate}
                     initialFocus
+                    mode="range"
+                    defaultMonth={date?.from}
+                    selected={date}
+                    onSelect={setDate}
+                    numberOfMonths={1}
                   />
                 </PopoverContent>
               </Popover>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>End Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !endDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={endDate}
-                    onSelect={setEndDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <p className="text-sm text-muted-foreground">
+                The start and end date for the handover coverage.
+              </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Tasks & Projects</CardTitle>
-          <CardDescription>
-            List all tasks and projects that need attention during your absence
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {tasks.map((task, index) => (
-            <div key={task.id} className="space-y-4 rounded-lg border p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <GripVertical className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-sm font-medium">Task {index + 1}</span>
+        <div className="space-y-6">
+          <div className="rounded-xl border bg-card shadow-sm">
+            <div className="border-b p-3 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold leading-none tracking-tight">Tasks & Projects</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">List all ongoing tasks and projects that require attention.</p>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeTask(task.id)}
-                  disabled={tasks.length === 1}
-                >
-                  <Trash2 className="h-4 w-4" />
+                <Button type="button" variant="outline" onClick={addTask} className="gap-2 w-full sm:w-auto hidden sm:flex">
+                  <Plus className="h-4 w-4" />
+                  Add Task
                 </Button>
               </div>
-              
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Title</Label>
-                  <Input
-                    placeholder="Project Alpha Migration"
-                    value={task.title}
-                    onChange={(e) => updateTask(task.id, 'title', e.target.value)}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={task.status}
-                    onValueChange={(value) => updateTask(task.id, 'status', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="in-progress">In Progress</SelectItem>
-                      <SelectItem value="review">Review</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Priority</Label>
-                  <Select
-                    value={task.priority}
-                    onValueChange={(value) => updateTask(task.id, 'priority', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="critical">Critical</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Link/Reference</Label>
-                  <Input
-                    placeholder="https://..."
-                    value={task.link || ""}
-                    onChange={(e) => updateTask(task.id, 'link', e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Notes</Label>
-                <Textarea
-                  placeholder="Additional details..."
-                  value={task.notes || ""}
-                  onChange={(e) => updateTask(task.id, 'notes', e.target.value)}
-                  rows={2}
-                />
-              </div>
             </div>
-          ))}
-          
-          <Button
-            type="button"
-            variant="outline"
-            onClick={addTask}
-            className="w-full"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Task
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Important Contacts</CardTitle>
-          <CardDescription>
-            People who should be contacted for specific issues
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {contacts.map((contact, index) => (
-            <div key={contact.id} className="space-y-4 rounded-lg border p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <GripVertical className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-sm font-medium">Contact {index + 1}</span>
+            <div className="p-3 sm:p-6 space-y-4">
+              {tasks.length > 0 ? (
+                tasks.map((task, index) => (
+                  <div key={task.id} className="rounded-lg border bg-card p-3 sm:p-5 shadow-sm transition-all hover:shadow-md">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg font-semibold text-muted-foreground">#{index + 1}</span>
+                        <h3 className="font-medium">Task</h3>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => removeTask(task.id)} disabled={tasks.length === 1}>
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Remove Task</span>
+                      </Button>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label>Title</Label>
+                        <Input
+                          placeholder="Project Alpha Migration"
+                          value={task.title}
+                          onChange={(e) => updateTask(task.id, 'title', e.target.value)}
+                          className="text-base"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                        <div className="space-y-2 sm:col-span-1">
+                          <Label>Status</Label>
+                          <Select
+                            value={task.status}
+                            onValueChange={(value) =>
+                              updateTask(task.id, "status", value)
+                            }
+                          >
+                            <SelectTrigger className="w-full truncate-select">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="in-progress">
+                                In Progress
+                              </SelectItem>
+                              <SelectItem value="review">Review</SelectItem>
+                              <SelectItem value="completed">
+                                Completed
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2 sm:col-span-1">
+                          <Label>Priority</Label>
+                          <Select
+                            value={task.priority}
+                            onValueChange={(value) =>
+                              updateTask(task.id, "priority", value)
+                            }
+                          >
+                            <SelectTrigger className="w-full truncate-select">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                              <SelectItem value="critical">Critical</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label>Link/Reference (Optional)</Label>
+                          <Input
+                            placeholder="https://..."
+                            value={task.link || ""}
+                            onChange={(e) =>
+                              updateTask(task.id, "link", e.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Notes (Optional)</Label>
+                        <Textarea
+                          placeholder="Additional details..."
+                          value={task.notes || ""}
+                          onChange={(e) => updateTask(task.id, 'notes', e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-muted-foreground">No tasks added yet</p>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeContact(contact.id)}
-                  disabled={contacts.length === 1}
-                >
-                  <Trash2 className="h-4 w-4" />
+              )}
+            </div>
+            <div className="p-3 sm:p-6 sm:hidden">
+              <Button type="button" variant="outline" onClick={addTask} className="gap-2 w-full">
+                <Plus className="h-4 w-4" />
+                Add Task
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-card shadow-sm">
+            <div className="border-b p-3 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold leading-none tracking-tight">Important Contacts</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">List key people who can be contacted for specific issues.</p>
+                </div>
+                <Button type="button" variant="outline" onClick={addContact} className="gap-2 w-full sm:w-auto hidden sm:flex">
+                  <Plus className="h-4 w-4" />
+                  Add Contact
                 </Button>
               </div>
-              
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input
-                    placeholder="John Doe"
-                    value={contact.name}
-                    onChange={(e) => updateContact(contact.id, 'name', e.target.value)}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Role/Department</Label>
-                  <Input
-                    placeholder="Engineering Lead"
-                    value={contact.role}
-                    onChange={(e) => updateContact(contact.id, 'role', e.target.value)}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    placeholder="john@example.com"
-                    value={contact.email || ""}
-                    onChange={(e) => updateContact(contact.id, 'email', e.target.value)}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input
-                    placeholder="+1 (555) 123-4567"
-                    value={contact.phone || ""}
-                    onChange={(e) => updateContact(contact.id, 'phone', e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Notes</Label>
-                <Textarea
-                  placeholder="Best for questions about..."
-                  value={contact.notes || ""}
-                  onChange={(e) => updateContact(contact.id, 'notes', e.target.value)}
-                  rows={2}
-                />
-              </div>
             </div>
-          ))}
-          
-          <Button
-            type="button"
-            variant="outline"
-            onClick={addContact}
-            className="w-full"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Contact
-          </Button>
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.back()}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        {canSaveAsDraft && (
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => handleSubmit('draft')}
-            disabled={isSubmitting || !title || !startDate || !endDate}
-          >
-            {isSubmitting ? "Saving..." : "Save as Draft"}
-          </Button>
-        )}
-        <Button
-          type="button"
-          onClick={() => handleSubmit('publish')}
-          disabled={isSubmitting || !title || !startDate || !endDate}
-        >
-          {isSubmitting ? "Publishing..." : (canSaveAsDraft ? "Publish Plan" : "Publish Changes")}
-        </Button>
+            <div className="p-3 sm:p-6 space-y-4">
+              {contacts.length > 0 ? (
+                contacts.map((contact, index) => (
+                  <div key={contact.id} className="rounded-lg border bg-card p-3 sm:p-5 shadow-sm transition-all hover:shadow-md">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg font-semibold text-muted-foreground">#{index + 1}</span>
+                        <h3 className="font-medium">Contact</h3>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeContact(contact.id)} disabled={contacts.length === 1}>
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Remove Contact</span>
+                      </Button>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Name</Label>
+                          <Input
+                            placeholder="John Doe"
+                            value={contact.name}
+                            onChange={(e) => updateContact(contact.id, 'name', e.target.value)}
+                            className="text-base"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Role/Department</Label>
+                          <Input
+                            placeholder="Engineering Lead"
+                            value={contact.role}
+                            onChange={(e) => updateContact(contact.id, 'role', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Email (Optional)</Label>
+                          <Input
+                            type="email"
+                            placeholder="john@example.com"
+                            value={contact.email || ""}
+                            onChange={(e) => updateContact(contact.id, 'email', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Phone (Optional)</Label>
+                          <Input
+                            placeholder="+1 (555) 123-4567"
+                            value={contact.phone || ""}
+                            onChange={(e) => updateContact(contact.id, 'phone', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Notes (Optional)</Label>
+                        <Textarea
+                          placeholder="Best for questions about..."
+                          value={contact.notes || ""}
+                          onChange={(e) => updateContact(contact.id, 'notes', e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-muted-foreground">No contacts added yet</p>
+                </div>
+              )}
+            </div>
+            <div className="p-3 sm:p-6 sm:hidden">
+              <Button type="button" variant="outline" onClick={addContact} className="gap-2 w-full">
+                <Plus className="h-4 w-4" />
+                Add Contact
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <div className="border-t bg-background/95 backdrop-blur py-2 sm:py-4 mt-2">
+        <div className="mx-auto flex w-full  flex-col sm:flex-row items-center justify-end gap-2 px-3">
+          {!isMobile && (
+            <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting} className="w-full sm:w-auto">
+              Cancel
+            </Button>
+          )}
+          {isOwner && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => handleSubmit('draft')}
+              disabled={isSubmitting || !title || !date?.from || !date?.to}
+              className="w-full sm:w-auto px-4 sm:px-6"
+            >
+              {isSubmitting ? "Saving..." : "Save as Draft"}
+            </Button>
+          )}
+          <Button
+            type="button"
+            onClick={() => handleSubmit('publish')}
+            disabled={isSubmitting || !title || !date?.from || !date?.to}
+            className="w-full sm:w-auto px-4 sm:px-6"
+          >
+            {isSubmitting ? "Publishing..." : (plan?.id ? "Publish Changes" : "Publish Plan")}
+          </Button>
+        </div>
+      </div>
+    </form>
   )
 }

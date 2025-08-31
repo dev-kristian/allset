@@ -1,23 +1,23 @@
-import { FilePlus2, ListChecks, Share2 } from "lucide-react"
+import { FileText, Users, Share2 } from "lucide-react"
 
 const features = [
   {
-    icon: <FilePlus2 className="size-8 text-primary" />,
-    title: "Easy Plan Creation",
+    icon: <FileText className="size-8 text-primary" />,
+    title: "Structured Plan Builder",
     description:
-      "Our intuitive form builder allows you to create comprehensive handover plans in minutes, with dedicated sections for tasks, projects, and important contacts.",
+      "Our intuitive editor helps you create comprehensive handover plans with dedicated sections for tasks, projects, and key contacts. Ensure nothing gets missed.",
+  },
+  {
+    icon: <Users className="size-8 text-primary" />,
+    title: "Invite & Collaborate",
+    description:
+      "Work on plans with your team. Invite colleagues as editors, commenters, or viewers to ensure all information is accurate and up-to-date before you leave.",
   },
   {
     icon: <Share2 className="size-8 text-primary" />,
-    title: "Seamless Public Sharing",
+    title: "Flexible Sharing Controls",
     description:
-      "Generate a unique, shareable link for your plan with a single click. Anyone with the link can view a clean, read-only version of your plan, no login required.",
-  },
-  {
-    icon: <ListChecks className="size-8 text-primary" />,
-    title: "Structured & Clear",
-    description:
-      "Ensure nothing gets missed. Our structured format for tasks and contacts provides clarity and ensures a smooth transition for your team during your absence.",
+      "Keep plans private to invited collaborators or generate a unique, shareable link for read-only public access. You control who sees what, and when.",
   },
 ]
 

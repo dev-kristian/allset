@@ -1,17 +1,18 @@
 "use client"
 
 import * as React from "react"
+import { useState } from "react"
 import Link from "next/link"
 import {
   FileText,
   HelpCircle,
   LayoutDashboard,
-  UserCircle,
 } from "lucide-react"
 
 import { NavMain } from "@/components/navigation/nav-main"
 import { NavUser } from "@/components/navigation/nav-user"
 import { Logo } from "@/components/logo"
+import { FeedbackForm } from "@/components/feedback/feedback-form"
 import {
   Sidebar,
   SidebarContent,
@@ -52,8 +53,8 @@ const navData = {
       icon: HelpCircle,
       items: [
         {
-          title: "Documentation",
-          url: "#",
+          title: "Send Feedback",
+          url: "/feedback",
         },
         {
           title: "FAQs",
@@ -73,6 +74,34 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 }
 
 export function AppSidebar({ user, ...props }: AppSidebarProps) {
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  
+  // Update the navData to use the modal for Send Feedback
+  const updatedNavData = {
+    ...navData,
+    navMain: navData.navMain.map(item => {
+      if (item.title === "Help & Support") {
+        return {
+          ...item,
+          items: item.items?.map(subItem => {
+            if (subItem.title === "Send Feedback") {
+              return {
+                ...subItem,
+                url: "#", // Use # instead of /feedback since we're opening a modal
+                onClick: (e: React.MouseEvent) => {
+                  e.preventDefault()
+                  setFeedbackOpen(true)
+                }
+              }
+            }
+            return subItem
+          })
+        }
+      }
+      return item
+    })
+  }
+  
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -82,7 +111,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
               <Link href="/dashboard">
                 <Logo className="size-8" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">HandoverPlan</span>
+                  <span className="truncate font-semibold">Handover Plan</span>
                   <span className="truncate text-xs">Handover Plans</span>
                 </div>
               </Link>
@@ -91,12 +120,13 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navData.navMain} />
+        <NavMain items={updatedNavData.navMain} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={user} />
       </SidebarFooter>
       <SidebarRail />
+      <FeedbackForm open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </Sidebar>
   )
 }
